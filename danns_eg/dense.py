@@ -16,7 +16,7 @@ class BaseModule(nn.Module):
         self.n_input = None
         self.n_output = None
         self.nonlinearity = None
-        self.exponentiated = None
+        self.spit_bias = None
     
     @property
     def input_shape(self): return self.n_input # reassess fter we have the rnns etc coded up
@@ -29,7 +29,7 @@ class BaseModule(nn.Module):
         """
         Expected to be something like:
         ```
-        if self.exponentiated: return self.bias_pos + self.bias_neg
+        if self.split_bias: return self.bias_pos + self.bias_neg
         else: return self.bias
         ```
         """
@@ -84,31 +84,40 @@ class BaseModule(nn.Module):
         return r
 
 class DenseLayer(BaseModule):
-    def __init__(self, n_input, n_output, nonlinearity=None, exponentiated=False):
+    def __init__(self, n_input, n_output, nonlinearity=None, use_bias=True, split_bias=False):
         """
         n_input:      input dimension
         n_output:     output dimension
         nonlinearity (callable or None): nonlinear activation function, if None then linear
+        split_bias: bool, to split the bias into bias_pos + bias_neg
+        use_bias (bool): If set to False, the layer will not learn an additive bias. Default: True
         """
         super().__init__()
         self.n_input = n_input
         self.n_output = n_output
         self.nonlinearity = nonlinearity
-        self.exponentiated = exponentiated
+        self.split_bias = split_bias 
+        self.use_bias = use_bias
 
         self.W = nn.Parameter(torch.randn(n_output, n_input))
-        if self.exponentiated: # init and define bias as 0 depending on eg
-            self.bias_pos = nn.Parameter(torch.ones(self.n_output,1))
-            self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+        if self.use_bias:
+            if self.split_bias: # init and define bias as 0 depending on eg
+                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1))
+                self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+            else:
+                self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
         else:
-            self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
+            self.register_parameter('bias', None)
+            self.split_bias = False
 
         self.init_weights()
 
     @property
     def b(self):
-        if self.exponentiated: return self.bias_pos + self.bias_neg
-        else: return self.bias
+        if self.split_bias: 
+            return self.bias_pos + self.bias_neg
+        else: 
+            return self.bias
     
     def init_weights(self, numerator=2):
         """
@@ -131,20 +140,20 @@ class DenseLayer(BaseModule):
         x is batch_dim x input_dim, 
         # todo - Transpose x as W is ne x input_dim 
         """
-        self.x = x.T
-        self.z = torch.mm(self.W, self.x) + self.b
+        # x is b x d, W is ne x d, b is ne x 1
+        self.z = torch.mm(x, self.W.T) 
+        if self.b: self.z = self.z + self.b.T 
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
-        return self.h.T
+        return self.h
 
-class EiDense(BaseModule):
+class EiDenseLayer(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,
-                 exponentiated=False, 
+    def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,use_bias=True, split_bias=False,
                  init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
@@ -154,7 +163,8 @@ class EiDense(BaseModule):
         self.n_input = n_input
         self.n_output = ne
         self.nonlinearity = nonlinearity
-        self.exponentiated = exponentiated
+        self.split_bias = split_bias
+        self.use_bias = use_bias
 
         self.ne = ne
         if isinstance(ni, float): self.ni = int(ne*ni)
@@ -166,11 +176,16 @@ class EiDense(BaseModule):
         self.Wei = nn.Parameter(torch.empty(self.ne,self.ni))
         
         # init and define bias as 0 depending on eg
-        if self.exponentiated:
-            self.bias_pos = nn.Parameter(torch.ones(self.n_output,1))
-            self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+        if self.use_bias:
+            if self.split_bias: # init and define bias as 0 depending on eg
+                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1))
+                self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+            else:
+                self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
         else:
-            self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
+            self.register_parameter('bias', None)
+            self.split_bias = False
+
 
         self.init_weights(**init_weights_kwargs)
 
@@ -180,8 +195,10 @@ class EiDense(BaseModule):
 
     @property
     def b(self):
-        if self.exponentiated: return self.bias_pos + self.bias_neg
-        else: return self.bias
+        if self.split_bias: 
+            return self.bias_pos + self.bias_neg
+        else: 
+            return self.bias
     
     def init_weights(self, numerator=2, ex_distribution="lognormal", k=1):
         """
@@ -227,14 +244,13 @@ class EiDense(BaseModule):
         x is batch_dim x input_dim, 
         therefore x.T as W is ne x input_dim ??? Why I got error?
         """
-        self.x = x.T
-        self.z = torch.matmul(self.W, self.x)
-        self.z = self.z + self.b
+        self.z = torch.matmul(x, self.W.T)
+        if self.b: self.z = self.z + self.b.T
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
-        return self.h.T
+        return self.h
 
         
 def init_eidense_ICLR(layer):
@@ -260,7 +276,7 @@ def init_eidense_ICLR(layer):
     layer.Wei.data = torch.from_numpy(Wei_np).float()
     nn.init.zeros_(layer.b)
 
-class EiDenseWithShunt(EiDense): 
+class EiDenseWithShunt(EiDenseLayer): 
     """
     PLACEHOLDER: TO BE TESTED AND FINISHED!
     """
