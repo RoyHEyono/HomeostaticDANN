@@ -1,12 +1,12 @@
 #!/bin/bash
 module purge
 module load python/3.7 
-module load cuda/10.1/cudnn/7.6 
-module load python/3.7/cuda/10.1/cudnn/7.6/pytorch/1.5.0
+module load cuda/11.1/cudnn/8.0
+module load python/3.7/cuda/11.1/cudnn/8.0/pytorch/1.8.1
 
 module list
 
-VENV_NAME='danns-v2'
+VENV_NAME='danns_eg'
 VENV_DIR=$HOME'/venvs/'$VENV_NAME
 
 echo 'Loading virtual env: '$VENV_NAME' in '$VENV_DIR
