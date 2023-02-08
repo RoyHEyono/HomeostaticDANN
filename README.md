@@ -13,6 +13,7 @@ To allow scripts to import lib modules from anywhere, we install the danns_eg fo
 pip install -r requirements.txt -e .
 ```
 
+### Using conda 
 To install using conda, follow the following steps on mila-cluster:
 
 ```
