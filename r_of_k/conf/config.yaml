@@ -1,10 +1,9 @@
 dataset:
-  n_datapoints: 1000
-  n: 10
-  k: 2
+  n_datapoints: 5000
+  n: 200
+  k: 150
   batch_size: 200
 model: "dann"
-
 project_results_dir: "/network/projects/_groups/linclab_users/danns/subprojects/eg"
 opt:
   use_sep_inhib_lrs: False

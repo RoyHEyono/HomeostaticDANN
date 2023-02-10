@@ -105,10 +105,10 @@ def build_dataloaders(cfg):
                                             n=cfg.dataset.n, 
                                             k=cfg.dataset.k, 
                                             r=0, 
-                                            neg_wstar=True)
-    print(X.shape)
+                                            neg_wstar=True, 
+                                            verbose=True,
+                                            noise_probs=(0.4, 0.2, 0.4))
     rofk_dataset = Dataset(X, y) 
-    print(rofk_dataset)
     loaders = {}
     for split in ['train','test']:
         if split == 'train':
@@ -129,32 +129,10 @@ def main(cfg:DictConfig):
     print(list(model.named_modules()))
     opt = get_optimiser(model, cfg)
     print(opt)
-    
-    
-    
-    # loaders = build_dataloaders(cfg)
-    # breakpoint()
+    print(" ---- ")
 
-    # model = dense.EiDenseLayer(n_input=cfg.dataset.n,ne=1, ni=1, split_bias=False)
-    # print(model.W)
-    # model.patch_init_weights_method(init_eidense_rofk)
-    # model.init_weights()
-    # print(model.W)
-
-    # model = dense.DenseLayer(n_input=cfg.dataset.n,n_output=1, split_bias=False)
-    # print(model.W)
-    # model.patch_init_weights_method(init_dense_rofk)
-    # model.init_weights()
-    # print(model.W)
-
+    loaders = build_dataloaders(cfg)
     
-
-
-    
-    #optimizer = build_optimizer()
-    # will have loop inside main
-    #train_epoch(loaders,model)
-    # eval
 
 if __name__ == "__main__":
     main()
