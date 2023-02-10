@@ -2,6 +2,54 @@
 Links to reference implementations
 http://mcneela.github.io/machine_learning/2019/09/03/Writing-Your-Own-Optimizers-In-Pytorch.html
 https://github.dev/huggingface/transformers/tree/main/src/transformers/models
+
+
+Expected that the main function will create the optimiser with a function similar to the
+following example:
+```
+def get_optimizer(param_groups, ):
+    params_groups = get_param_groups(p, model)
+    # first construct the iterable of param groups
+    parameters = []
+    for k, group in params_groups.items():
+        d = {"params":group, "name":k}
+        
+        if k in ["wix_params", "wei_params",'wex_params']: 
+            d["positive_only"] = True
+        else: 
+            d["positive_only"] = False
+        
+        if p.opt.use_sep_inhib_lrs:
+            if k == "wix_params": d['lr'] = p.opt.inhib_lrs.wix
+            elif k == "wei_params": d['lr'] = p.opt.inhib_lrs.wei
+        
+        if k == "norm_biases":
+            d['exponentiated_grad'] = False 
+        if p.opt.use_sep_bias_gain_lrs:
+            if k == "norm_biases": 
+                d['lr'] = p.opt.bias_gain_lrs.b
+                print("hard coding non exp grad for biases")
+            elif k == "norm_gains": d['lr'] = p.opt.bias_gain_lrs.g
+        
+        parameters.append(d)
+    
+    if p.opt.algorithm.lower() == "sgd":
+        opt = SGD(parameters, lr = p.opt.lr,
+                   weight_decay=p.opt.wd,
+                   momentum=p.opt.momentum,
+                   exponentiated_grad=p.opt.exponentiated) 
+        opt.nesterov = p.opt.nesterov
+        opt.eg_normalise = p.opt.eg_normalise
+        return opt
+
+    elif p.opt.algorithm.lower() == "adamw":
+        #  this should be adapted in future for adamw specific args! 
+        return AdamW(parameters, lr = p.opt.lr,
+                     weight_decay=p.opt.wd,
+                     exponentiated_grad=p.opt.exponentiated) 
+
+```
+
 """
 import math
 from typing import Callable, Iterable, Optional, Tuple, Union
@@ -12,12 +60,66 @@ from torch import nn, no_grad
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
-class SGD(Optimizer):
+def get_param_groups(model, return_groups_dict=False):
+    """
+    Utility function to seperate model parameters into groups.
+
+    Unless return_groups_dict=True, returns a list of dictionaries in
+    the format expected by pytorch optimisers, ie:
+    [ {'params': [],'name':str },  {'params':[], 'name':str, 'lr': float}],
+
+    If return_groups_dict is True, returns a dictionary of name:param_list pairs. 
+    """
+    norm_layers = (nn.GroupNorm, nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d) # update this if needed
+    param_groups = {
+        "norm_biases":[],"norm_gains":[], "bias_params":[],
+        "wix_params":[], "wei_params": [],'wex_params':[],
+        "rho_params":[], "other_params":[] }
     
+    for name, m in model.named_modules():
+        if len(list(m.named_parameters(recurse=False))) == 0:
+            continue # skip modules that do not have child parameters 
+        
+        if isinstance(m,  norm_layers):
+            param_groups['biases'].append(m.bias)
+            param_groups['norm_gains'].append(m.weight)
+            continue
+        
+        for k, param in m.named_parameters(recurse=False):
+            if k.lower().endswith("ix"): param_groups['wix_params'].append(param)
+            elif k.lower().endswith("ei"): param_groups['wei_params'].append(param)
+            elif k.lower().endswith("ex"): param_groups['wex_params'].append(param)
+            elif "bias" in k.lower(): param_groups['bias_params'].append(param)
+            elif "rho"  in k.lower():param_groups['rho_params']
+            else: 
+                param_groups['other_params'].append(param)
+
+    # drop empty lists (for e.g if not a dann no ex, ix, ei etc)
+    param_groups = {k:l for k,l in param_groups.items() if len(l)> 0}
+
+    # check we have every parameter
+    all_params = [] 
+    for group in param_groups.values(): 
+        all_params+=group
+    all_params = set(all_params)
+    for k, param in model.named_parameters():
+        assert param in all_params
+
+    if return_groups_dict:
+        return param_groups
+    # construct the list as expected by pytorch optimisers
+    param_groups_list = []
+    for k, group in param_groups.items():
+        param_groups_list.append({"params":group, "name":k})
+    return param_groups_list
+    
+class SGD(Optimizer):
     def __init__(self, params, lr=0.1, weight_decay=0.0, momentum=0.9,
-                 exponentiated_grad:bool = False, 
-                 exponentiated_wd = None,
-                 positive_only: bool = False):
+                 update_algorithm:str = "gd", 
+                 exponentiated_wd = None, # to do
+                 positive_only: bool = False,
+                 eg_normalise: bool = False,
+                 nesterov: bool = False ):
         """
         Args:
             params : Iterable of parameters to optimize or dictionaries defining parameter groups.
@@ -26,19 +128,17 @@ class SGD(Optimizer):
             momentum: note this is the torch sgd version of momentum, i.e lr is applied to update v.
                       Also note that in my impl weight decay is decoupled from the momentum. 
                       (This seems to be slightly better than pytorch's impl but not carefully checked) 
-            exponentiated_grad: bool toggle to use EG for updates. 
-            exponentiated_wd : if None, same as exponentiated_grad, else a bool toggle. 
+            update_algorithm: str in {"gd", "eg"}
+            exponentiated_wd : PLACEHOLDER if None, same as exponentiated_grad, else a bool toggle. 
                                **Not implemented yet** 
-            positive_only: bool, if true clamps params min 0. 
+            positive_only : bool, if true clamps params min 0. 
+            eg_normalise : whether to normalise the sum of weights after the eg update
         """
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        exponentiated_grad=exponentiated_grad, positive_only=positive_only)
+                        update_algorithm=update_algorithm, positive_only=positive_only,
+                        eg_normalise=eg_normalise, nesterov=nesterov)
         super().__init__(params, defaults)
         
-        # these attributes could/should be arguments
-        self.eg_normalise = False # whether to normalise the sum of weights after the eg update
-        self.nesterov = False
-    
     def step(self, closure: Callable = None):
         """
         Performs a single optimization step.
@@ -65,7 +165,7 @@ class SGD(Optimizer):
                     else: 
                         p.grad = state["v"]
 
-                if group["exponentiated_grad"]:
+                if group["update_algorithm"] == "eg":
                     if self.eg_normalise:
                         state = self.state[p] 
                         try: c = state["c"]

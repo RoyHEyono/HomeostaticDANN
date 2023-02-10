@@ -4,8 +4,14 @@ dataset:
   k: 2
   batch_size: 200
 model: "dann"
-update_algorithm: "eg"
+
 project_results_dir: "/network/projects/_groups/linclab_users/danns/subprojects/eg"
+opt:
+  use_sep_inhib_lrs: False
+  update_algorithm: "eg"
+  lr: 0.1
+  wd: 0
+  momentum: 0
 # output_dir: "${SLURM_TMPDIR}"
 # hydra:
 #   run:

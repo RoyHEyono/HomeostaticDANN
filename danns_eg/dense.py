@@ -36,7 +36,9 @@ class BaseModule(nn.Module):
         raise NotImplementedError
 
     def init_weights(self, **args):
-        "This should not include the bias, parameters defined in the __init__"
+        """
+        Expected to not include the bias, instead bias init in the __init__,
+        """
         raise NotImplementedError
     
     def patch_init_weights_method(self, obj):

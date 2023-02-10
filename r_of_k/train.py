@@ -1,12 +1,15 @@
 import os
 import hydra
 from omegaconf import DictConfig
+from pprint import pprint
+
 import torch
+from torch.utils.data import DataLoader, Dataset
 
 from danns_eg import dense
+from danns_eg import optimisation
+from danns_eg.sequential import Sequential
 from danns_eg.data import r_of_k
-
-from torch.utils.data import DataLoader, Dataset
 
 class Dataset(Dataset):
     """
@@ -49,25 +52,52 @@ def init_dense_rofk(layer):
 
 def build_model(cfg):
     """
-    For r-of-k we are using single neuron dense layers with linear outputs because
-    the bineary CE loss takes logit inputs. 
+    For r-of-k we are using single neuron dense layers with no bias and
+    identity act func (because the bineary CE loss takes logit inputs). 
+    W is also init as zeros.
     """
-    assert cfg.update_algorithm in ["eg", "gd"]
-    if cfg.update_algorithm == "eg": split_bias = True
-    elif cfg.update_algorithm == "gd": split_bias = False
-    
+    # assert cfg.update_algorithm in ["eg", "gd"]
+    # if cfg.update_algorithm == "eg": split_bias = True
+    # elif cfg.update_algorithm == "gd": split_bias = False
     assert cfg.model in ["dann", "mlp"]
     if cfg.model == "dann":
-        model = dense.EiDenseLayer(cfg.dataset.n, 2, 1, split_bias)
+        model = dense.EiDenseLayer(n_input=cfg.dataset.n, ne=1, ni=1, use_bias=False, nonlinearity=None)
         model.patch_init_weights_method(init_eidense_rofk)
         model.init_weights()
     
     elif cfg.model == "mlp":
-        model = dense.DenseLayer(cfg.dataset.n, 2, split_bias)
+        model = dense.DenseLayer(n_input=cfg.dataset.n, n_output=1, use_bias=False, nonlinearity=None)
         model.patch_init_weights_method(init_dense_rofk)
         model.init_weights()
 
     return model
+
+def get_optimiser(model, cfg):
+    """
+    Groups that may be returned by opt.get_param_groups(model) for rofk are 
+    ["wix_params", "wei_params",'wex_params', 'other_params', 'biases']
+    
+    """
+    param_groups_list = optimisation.get_param_groups(model)
+    pprint(param_groups_list)
+    for param_group in param_groups_list:
+        group_name = param_group["name"]
+        if group_name in ["wix_params", "wei_params",'wex_params']: 
+            param_group["positive_only"] = True
+
+        if cfg.opt.use_sep_inhib_lrs:
+            if group_name == "wix_params": param_group['lr'] = cfg.opt.wix
+            elif group_name == "wei_params": param_group['lr'] = cfg.opt.wei
+
+    pprint(param_groups_list)
+
+    opt = optimisation.SGD(params = param_groups_list, 
+                           lr = cfg.opt.lr,
+                           weight_decay = cfg.opt.wd,
+                           momentum = cfg.opt.momentum,
+                           update_algorithm = cfg.opt.update_algorithm) 
+    return opt
+
 
 def build_dataloaders(cfg):
     X,y, w_star = r_of_k.generate_noisy_r_of_k_data(
@@ -93,14 +123,18 @@ def build_dataloaders(cfg):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg:DictConfig):
     print(cfg)
-    # print(cfg.dataset.n)
-    # #print("Working directory : {}".format(os.getcwd()))
 
-    # model = build_model(cfg)
+    model = build_model(cfg)
+    print(" ---- ")
+    print(list(model.named_modules()))
+    opt = get_optimiser(model, cfg)
+    print(opt)
+    
+    
+    
     # loaders = build_dataloaders(cfg)
     # breakpoint()
 
-    from danns_eg import dense
     # model = dense.EiDenseLayer(n_input=cfg.dataset.n,ne=1, ni=1, split_bias=False)
     # print(model.W)
     # model.patch_init_weights_method(init_eidense_rofk)
