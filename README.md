@@ -31,3 +31,14 @@ To activate the conda environment:
 module load anaconda/3
 conda activate ffcv_eg
 ```
+
+Feb 10th
+---------
+Results dir for this repo will be in the linclab_users group. Added to the config file
+```
+project_results_dir: "/network/projects/_groups/linclab_users/danns/subprojects/eg"
+```
+Mount the directory if desired with something like:
+```
+sshfs cornforj@login.server.mila.quebec:/network/projects/_groups/linclab_users/danns/subprojects/ ~/mnt/mila -p 2222
+```

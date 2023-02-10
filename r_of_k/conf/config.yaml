@@ -1,0 +1,12 @@
+dataset:
+  n_datapoints: 1000
+  n: 100
+  k: 10
+  batch_size: 200
+model: "dann"
+update_algorithm: "eg"
+project_results_dir: "/network/projects/_groups/linclab_users/danns/subprojects/eg"
+# output_dir: "${SLURM_TMPDIR}"
+# hydra:
+#   run:
+#     dir: "${SLURM_TMPDIR}"
