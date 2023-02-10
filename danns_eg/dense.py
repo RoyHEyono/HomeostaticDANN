@@ -165,7 +165,6 @@ class EiDenseLayer(BaseModule):
         self.nonlinearity = nonlinearity
         self.split_bias = split_bias
         self.use_bias = use_bias
-
         self.ne = ne
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
@@ -175,19 +174,21 @@ class EiDenseLayer(BaseModule):
         self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input))
         self.Wei = nn.Parameter(torch.empty(self.ne,self.ni))
         
-        # init and define bias as 0 depending on eg
+        # init and define bias as 0, split into pos, neg if using eg
         if self.use_bias:
-            if self.split_bias: # init and define bias as 0 depending on eg
-                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1))
+            if self.split_bias: 
+                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1)) 
                 self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
             else:
                 self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
         else:
             self.register_parameter('bias', None)
             self.split_bias = False
-
-
-        self.init_weights(**init_weights_kwargs)
+        
+        try:
+            self.init_weights(**init_weights_kwargs)
+        except:
+            print("Warning: Error initialising weights with default init!")
 
     @property
     def W(self):
@@ -274,7 +275,7 @@ def init_eidense_ICLR(layer):
     layer.Wex.data = torch.from_numpy(Wex_np).float()
     layer.Wix.data = torch.from_numpy(Wix_np).float()
     layer.Wei.data = torch.from_numpy(Wei_np).float()
-    nn.init.zeros_(layer.b)
+    # nn.init.zeros_(layer.b) # no longer setting bias in init weights
 
 class EiDenseWithShunt(EiDenseLayer): 
     """
@@ -381,19 +382,15 @@ if __name__ == "__main__":
     print(l)
 
 
-    # now play with EiDense
+    # now test EiDense
     ei_layer = EiDense(784,784,ni=0.1, nonlinearity=F.relu, exponentiated=False)
     ei_layer.init_weights()
-    # l = EiDense(784, 10)
-    # #l.weight_init_policy = ip.DenseNormalInit()
-    # print(l.b)
-    # print(l.bias_neg)
-    # print(l.bias_pos)
-    # pass
 
     # test the init_eidense_ICLR
+    ei_layer.patch_init_weights_method(init_eidense_ICLR)
+    ei_layer.init_weights()
 
-    # Build lager network
+    # Test building a lager network
     from sequential import Sequential
     def build_dense_net(layerclass, input_dim=784, hidden_dim=200,
                     output_dim=10, n_hidden_layers=5):

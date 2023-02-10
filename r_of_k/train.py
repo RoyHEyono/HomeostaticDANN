@@ -32,22 +32,40 @@ class Dataset(Dataset):
     
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
-    
 
+def init_eidense_rofk(layer):
+    """
+    Initialise for W vector of zeros
+    """
+    layer.Wex.data = torch.ones(layer.Wex.shape)*(1/layer.n_input) 
+    layer.Wix.data = torch.ones(layer.Wix.shape)*(1/layer.n_input) 
+    layer.Wei.data = torch.ones(layer.Wei.shape)
+
+def init_dense_rofk(layer):
+    """
+    Initialise for W vector of zeros
+    """
+    layer.W.data = torch.zeros(layer.W.shape)
 
 def build_model(cfg):
     """
-    For r-of-k we are using single neurons with linear outputs because
-    the bineary CE loss will expect logit inputs 
+    For r-of-k we are using single neuron dense layers with linear outputs because
+    the bineary CE loss takes logit inputs. 
     """
+    assert cfg.update_algorithm in ["eg", "gd"]
     if cfg.update_algorithm == "eg": split_bias = True
     elif cfg.update_algorithm == "gd": split_bias = False
     
     assert cfg.model in ["dann", "mlp"]
     if cfg.model == "dann":
         model = dense.EiDenseLayer(cfg.dataset.n, 2, 1, split_bias)
+        model.patch_init_weights_method(init_eidense_rofk)
+        model.init_weights()
+    
     elif cfg.model == "mlp":
         model = dense.DenseLayer(cfg.dataset.n, 2, split_bias)
+        model.patch_init_weights_method(init_dense_rofk)
+        model.init_weights()
 
     return model
 
@@ -75,12 +93,29 @@ def build_dataloaders(cfg):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg:DictConfig):
     print(cfg)
-    print(cfg.dataset.n)
-    #print("Working directory : {}".format(os.getcwd()))
+    # print(cfg.dataset.n)
+    # #print("Working directory : {}".format(os.getcwd()))
 
-    model = build_model(cfg)
-    loaders = build_dataloaders(cfg)
-    breakpoint()
+    # model = build_model(cfg)
+    # loaders = build_dataloaders(cfg)
+    # breakpoint()
+
+    from danns_eg import dense
+    # model = dense.EiDenseLayer(n_input=cfg.dataset.n,ne=1, ni=1, split_bias=False)
+    # print(model.W)
+    # model.patch_init_weights_method(init_eidense_rofk)
+    # model.init_weights()
+    # print(model.W)
+
+    # model = dense.DenseLayer(n_input=cfg.dataset.n,n_output=1, split_bias=False)
+    # print(model.W)
+    # model.patch_init_weights_method(init_dense_rofk)
+    # model.init_weights()
+    # print(model.W)
+
+    
+
+
     
     #optimizer = build_optimizer()
     # will have loop inside main
