@@ -11,7 +11,8 @@ from scipy.optimize import minimize
 
 def generate_noisy_r_of_k_data(n_datapoints, n, k, r, class_balance=0.5, 
                                p_rel=0.5, p_irrel="same", seed=None, shuffle=False, 
-                               noise_probs=None,  neg_wstar=False, verbose=False):
+                               noise_probs=None, w_star=None, neg_wstar=False, 
+                               verbose=False):
     """
     Slightly more complicated version of generate_r_of_k_data func
     in the "learning_r_of_k_functions" module.
@@ -45,12 +46,13 @@ def generate_noisy_r_of_k_data(n_datapoints, n, k, r, class_balance=0.5,
     X = np.concatenate([X_k, X_n], axis=1)
     X.astype(float)
     # Generate "target" vector, w_star
-    w_star = np.concatenate([np.ones(k), np.zeros(n-k)], axis=0)
-    if neg_wstar:
-        neg_inds = np.random.choice(range(k), size=int(k/2), replace =False)
-        print(int(k/2), neg_inds)
-        w_star[neg_inds] =  w_star[neg_inds]*-1
-        print("w_star: ", w_star[:20])
+    if w_star is None:
+        w_star = np.concatenate([np.ones(k), np.zeros(n-k)], axis=0)
+        if neg_wstar:
+            neg_inds = np.random.choice(range(k), size=int(k/2), replace =False)
+            print(int(k/2), neg_inds)
+            w_star[neg_inds] =  w_star[neg_inds]*-1
+            print("w_star: ", w_star[:20])
 
     if shuffle: # This is cosmetic only
         shuffle_idxs = np.random.permutation(n)
