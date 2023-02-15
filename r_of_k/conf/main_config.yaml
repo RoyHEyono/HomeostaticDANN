@@ -1,7 +1,9 @@
 defaults:
-- config_schema
 - model: dann
 - _self_
+
+# model:
+#   name: override_value_here
 
 hydra:
   job:
@@ -15,7 +17,6 @@ dataset:
   batch_size: 500
 project_results_dir: "/network/projects/_groups/linclab_users/danns/subprojects/eg"
 opt:
-  use_sep_inhib_lrs: False
   update_algorithm: "eg"
   lr: 0.1
   wd: 0

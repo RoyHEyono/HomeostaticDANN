@@ -1,5 +1,4 @@
 defaults:
-- base_mlp
 - _self_
 
 name: mlp

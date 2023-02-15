@@ -51,22 +51,7 @@ def build_dataloaders(cfg: Mapping):
     return loaders
 
 
-@dataclass
-class ModelConfig:
-    name: str = MISSING
-    n: int = II('dataset.n')
-
-
-@dataclass
-class DanConfig(ModelConfig):
-    name: str = "dann"
-    dan_num: int = field(default=1)
-
-@dataclass
-class MLPConfig(ModelConfig):
-    name: str = "mlp"
-
-def build_model(cfg: ModelConfig):
+def build_model(cfg):
     """
     For r-of-k we are using single neuron dense layers with no bias and
     identity act func (because the bineary CE loss takes logit inputs). 
@@ -114,24 +99,11 @@ def get_optimiser(model: torch.nn.Module, cfg: Mapping):
                            update_algorithm = cfg.opt.update_algorithm) 
     return opt
 
-
 def train_epoch(cfg: Mapping):
     pass
 
-@dataclass
-class MainConfig:
-    model: ModelConfig = field(default_factory=ModelConfig)
-    dataset: dict = field(default_factory=dict)
-    project_results_dir: Optional[str] = field(default=None)
-    opt: dict = field(default_factory=dict)
-
-cs = ConfigStore.instance()
-cs.store(name='config_schema', node=MainConfig)
-cs.store(group='model', name='base_dann', node=DanConfig)
-cs.store(group='model', name='base_mlp', node=MLPConfig)
-
-@hydra.main(config_path = "conf", config_name = "config", version_base=None)
-def main(cfg: MainConfig):
+@hydra.main(config_path = "conf", config_name = "main_config", version_base=None)
+def main(cfg):
     print(OmegaConf.to_yaml(cfg))
     exit()
 
