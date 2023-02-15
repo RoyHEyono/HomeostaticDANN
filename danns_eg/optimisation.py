@@ -160,13 +160,13 @@ class SGD(Optimizer):
                     state["v"].mul_(mu).add_(p.grad.data)
                     state["step"] += 1 # not sure if we need to track this
                     
-                    if self.nesterov:
+                    if group["nesterov"]:
                         p.grad += mu * state["v"]
                     else: 
                         p.grad = state["v"]
 
                 if group["update_algorithm"] == "eg":
-                    if self.eg_normalise:
+                    if group["eg_normalise"]:
                         state = self.state[p] 
                         try: c = state["c"]
                         except KeyError: 
@@ -178,7 +178,7 @@ class SGD(Optimizer):
                         wd_step_size = -group["lr"] * group["weight_decay"]
                         p.data.mul_(torch.exp(p.data.sign() * p.data * wd_step_size))
                     
-                    if self.eg_normalise: 
+                    if  group["eg_normalise"]: 
                         div_factor = c/torch.sum(p.data*p.data.sign()).cpu().numpy()
                         p.data.mul_(div_factor)
 

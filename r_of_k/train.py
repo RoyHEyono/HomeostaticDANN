@@ -1,16 +1,24 @@
 import os
-import hydra
-from typing import Optional
-from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig
+from tqdm import tqdm
+from typing import Optional, Mapping
 from pprint import pprint
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
-from typing import Mapping
+import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
-from omegaconf import II, MISSING, OmegaConf
 
+import torch.backends.xnnpack
+print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
+
+from omegaconf import II, MISSING, OmegaConf
+import hydra
+from hydra.core.config_store import ConfigStore
+from omegaconf import DictConfig
+
+from danns_eg import utils as danns_eg_utils
 from danns_eg import dense
 from danns_eg import optimisation
 from danns_eg.sequential import Sequential
@@ -61,13 +69,13 @@ def build_model(cfg):
     # if cfg.update_algorithm == "eg": split_bias = True
     # elif cfg.update_algorithm == "gd": split_bias = False
     # assert cfg.model in ["dann", "mlp"]
-    if cfg.name == "dann":
-        model = dense.EiDenseLayer(n_input=cfg.n, ne=1, ni=1, use_bias=False, nonlinearity=None)
+    if cfg.model.name == "dann":
+        model = dense.EiDenseLayer(n_input=cfg.dataset.n, ne=1, ni=1, use_bias=False, nonlinearity=None)
         model.patch_init_weights_method(train_utils.init_eidense_rofk)
         model.init_weights()
     
-    elif cfg.name == "mlp":
-        model = dense.DenseLayer(n_input=cfg.n, n_output=1, use_bias=False, nonlinearity=None)
+    elif cfg.model.name == "mlp":
+        model = dense.DenseLayer(n_input=cfg.dataset.n, n_output=1, use_bias=False, nonlinearity=None)
         model.patch_init_weights_method(train_utils.init_dense_rofk)
         model.init_weights()
 
@@ -80,17 +88,17 @@ def get_optimiser(model: torch.nn.Module, cfg: Mapping):
     
     """
     param_groups_list = optimisation.get_param_groups(model)
-    pprint(param_groups_list)
+    #pprint(param_groups_list)
     for param_group in param_groups_list:
         group_name = param_group["name"]
         if group_name in ["wix_params", "wei_params",'wex_params']: 
             param_group["positive_only"] = True
 
-        if cfg.opt.use_sep_inhib_lrs:
+        if cfg.model.use_sep_inhib_lrs:
             if group_name == "wix_params": param_group['lr'] = cfg.opt.wix
             elif group_name == "wei_params": param_group['lr'] = cfg.opt.wei
 
-    pprint(param_groups_list)
+    #pprint(param_groups_list)
 
     opt = optimisation.SGD(params = param_groups_list, 
                            lr = cfg.opt.lr,
@@ -99,23 +107,71 @@ def get_optimiser(model: torch.nn.Module, cfg: Mapping):
                            update_algorithm = cfg.opt.update_algorithm) 
     return opt
 
-def train_epoch(cfg: Mapping):
+def train_epoch(cfg, opt, model, loaders, epoch_i, scaler): 
+    """
+    Returns batch_accs, batch_losses lists
+    """
+    
+    loss_func = torch.nn.functional.binary_cross_entropy_with_logits
+    
+    batch_accs, batch_losses = [], []
+    progress_bar = tqdm(loaders['train'], desc='Train')
+    for batch_i, (X, y) in enumerate(progress_bar):
+        X = X.to(device)
+        y = y.to(device)
+
+        model.train()
+        opt.zero_grad(set_to_none=True)
+        with autocast():
+            logits = model(X)
+            loss = loss_func(logits.squeeze(), y.float())
+        
+        scaler.scale(loss).backward()
+        scaler.step(opt)
+        scaler.update()
+    
+        with torch.no_grad():
+            probs = torch.sigmoid(logits)
+            y_hat = (probs>0.5).long() # labels are long (int 32)
+            batch_n_correct, batch_acc = train_utils.binary_acc(y_hat, y)
+        progress_bar.set_description(
+            f'Epoch {epoch_i}, batch {batch_i+1}: Acc {np.mean(batch_accs)*100}% '
+        )
+        batch_accs.append(batch_acc.item())
+        batch_losses.append(loss.item())
+
+    # print("Accs:", batch_accs)
+    # print("Losses:", batch_losses)
+    return batch_losses, batch_accs
+
+def eval_model():
+    # if loaders train_eval use that else, train
+
+    # loaders tests
+    pass
+
+def train():
     pass
 
 @hydra.main(config_path = "conf", config_name = "main_config", version_base=None)
 def main(cfg):
     print(OmegaConf.to_yaml(cfg))
-    exit()
-
-    model = build_model(cfg.model)
-    print(" ---- ")
-    print(list(model.named_modules()))
+    
+    model = build_model(cfg)
+    model.to(device)
+    
     opt = get_optimiser(model, cfg)
-    print(opt)
-    print(" ---- ")
+    #print(opt)
 
     loaders = build_dataloaders(cfg)
+    scaler = GradScaler() 
+
+    for epoch_i in range(cfg.n_epochs):
+        train_epoch(cfg, opt=opt, model=model, loaders=loaders, 
+                    epoch_i=epoch_i, scaler=scaler)
+
     
 
 if __name__ == "__main__":
+    device = danns_eg_utils.get_device()
     main()

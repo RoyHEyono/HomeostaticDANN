@@ -17,8 +17,8 @@ class Dataset(Dataset):
         n is the number of distractors, so n=0 is normal mnist 
         """
         super().__init__()
-        self.X = X
-        self.y =y
+        self.X = X.astype("float32")
+        self.y =y.astype("long")
 
     def __len__(self):
         return self.X.shape[0]
@@ -40,3 +40,8 @@ def init_dense_rofk(layer):
     Initialise for W vector of zeros
     """
     layer.W.data = torch.zeros(layer.W.shape)
+
+def binary_acc(yhat, y):
+    yhat = yhat.squeeze()
+    n_correct = torch.sum(yhat==y)
+    return n_correct, 1.0*n_correct/y.size(0)
