@@ -16,8 +16,6 @@ import torch.nn as nn
 from pprint import pprint
 from pathlib import Path
 
-import fastargs
-
 def set_seed_all(seed):
     """
     Sets all random states
@@ -54,6 +52,7 @@ def checkpoint_model(save_path, model, epoch_i, opt, scheduler=None):
     torch.save(checkpoint_dict, save_path)
 
 def get_config():
+    import fastargs
     config = fastargs.get_current_config()
     if not hasattr(sys, 'ps1'): # if not interactive mode 
         parser = argparse.ArgumentParser(description='fastargs demo')
@@ -64,6 +63,7 @@ def get_config():
     return config.get()
 
 def load_config(filepath):
+    import fastargs
     config = fastargs.get_current_config()
     config.collect_config_file(filepath)
     config.validate(mode='stderr')
@@ -80,47 +80,7 @@ def get_params_to_log_wandb(p):
         else: params_to_log.update(field.__dict__)
     return params_to_log
 
-def get_param_groups(p, model):
-    """
-    Groups and returns parameters as dictionary
-    """
-    param_groups = {
-        "norm_biases":[],"norm_gains":[],
-        "wix_params":[], "wei_params": [],'wex_params':[],
-        "other_params":[] 
-    }
-    norm_layers = (nn.BatchNorm2d,nn.GroupNorm) # update this if we need to!
-    for name, m in model.named_modules():
-        if len(list(m.named_parameters(recurse=False))) == 0:
-            continue # skip modules that do not have child parameters 
-        
-        if isinstance(m,  norm_layers):
-            param_groups['norm_biases'].append(m.bias)
-            param_groups['norm_gains'].append(m.weight)
-            continue
-        
-        for k, param in m.named_parameters(recurse=False):
-            if k.lower().endswith("ix"): param_groups['wix_params'].append(param)
-            elif k.lower().endswith("ei"): param_groups['wei_params'].append(param)
-            elif k.lower().endswith("ex"): param_groups['wex_params'].append(param)
-            # here would also include rho in future
-            else: 
-                if p.model.is_dann:
-                    print(name, param.shape)
-                param_groups['other_params'].append(param)
 
-    # drop empty lists (for e.g if not a dann no ex, ix, ei etc)
-    param_groups = {k:l for k,l in param_groups.items() if len(l)> 0}
-
-    # check we have every parameter
-    all_params = [] 
-    for group in param_groups.values(): 
-        all_params+=group
-    all_params = set(all_params)
-    for k, param in model.named_parameters():
-        assert param in all_params
-
-    return param_groups
 
 
     

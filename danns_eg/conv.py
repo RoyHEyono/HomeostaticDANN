@@ -5,12 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lib import utils
-from lib.utils import acc_func
-
-from lib.dense_layers import DenseLayer
-from lib.init_policies import EiDenseWithShunt_WeightInitPolicy_ICLR, EiConv_WeightInitPolicy, HeConv2d_WeightInitPolicy
-from lib.update_policies import DalesANN_cSGD_UpdatePolicy, DalesANN_conv_cSGD_UpdatePolicy
+from dense import DenseLayer
 
 class HeConv2d_WeightInitPolicy():
     """
@@ -185,7 +180,7 @@ class EiConvLayer(nn.Module):
         Wex = self.Wex.flatten(start_dim=1)
         Wix = self.Wix.flatten(start_dim=1)
         weight = torch.reshape(Wex - torch.matmul(self.Wei, Wix),e_shape)
-        
+
         return F.conv2d(x, weight, self.bias, self.stride, 
                         self.padding, self.dilation, self.groups)
         

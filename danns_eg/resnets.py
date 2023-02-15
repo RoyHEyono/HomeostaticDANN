@@ -1,48 +1,46 @@
 """
-Resnet implementations including ei
+Resnet implementations. 
 
-https://myrtle.ai/learn/how-to-train-your-resnet/
+See https://myrtle.ai/learn/how-to-train-your-resnet/
+https://docs.ffcv.io/ffcv_examples/cifar10.html
+
+Note: All Ei models are hardcoded to have 10% inhibitory in this module. 
 """
-from typing import Any, Callable, List, Optional, Type, Union
-
 import torch.nn as nn
 import torch
 import numpy as np 
 
-from lib.conv_layers import EiConvLayer, ConvLayer
-from models.sequential import Sequential
-#from torch.nn import Sequential 
+from conv import EiConvLayer, ConvLayer
+from dense import EiDenseLayer
+from sequential import Sequential
 
 class Mul(nn.Module):
     def __init__(self, weight):
        super(Mul, self).__init__()
        self.weight = weight
     def forward(self, x): return x * self.weight
+
 class Flatten(nn.Module):
     def forward(self, x): return x.view(x.size(0), -1)
 
 def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
+    modules = []
     if p.model.is_dann == True:
         conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
                             stride=stride,padding=padding, groups=groups, bias=False)
-        # here also take into account the norm layers and subtractive only 
-        # bias will be false unless you are learning the norm!
-        
     else:
-        # conv2d = nn.Conv2d(c_in, c_out, kernel_size=kernel_size,stride=stride,
-        #                    padding=padding, groups=groups, bias=False)
-        # nn.init.kaiming_normal_(conv2d.weight, mode="fan_out", nonlinearity="relu")
         conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
                            padding=padding, groups=groups, bias=False)
-
+    modules.append(conv2d)
+    
     if p.model.normtype == "bn": norm_layer = nn.BatchNorm2d(c_out)
     elif p.model.normtype == "ln": norm_layer = nn.GroupNorm(1,c_out)
     elif p.model.normtype.lower() == "none": norm_layer = None
-
+    if norm_layer is not None: modules.append(norm_layer)
     # then everything will use relu for now
     act_func = nn.ReLU(inplace=True)
+    modules.append(act_func)
 
-    modules = [m for m in [conv2d, norm_layer, act_func] if m is not None]
     return Sequential(modules)
 
 class BasicBlock(nn.Module):
@@ -87,7 +85,7 @@ def resnet18(p, cifar=True):
     #model = model.cuda()
     return model
 
-def resnet9_kakaobrain(p):
+def resnet9_kakaobrain(p:dict, linear_decoder=False):
     """
     From the ffcv example
     # Model (from KakaoBrain: https://github.com/wbaek/torchskeleton)
@@ -99,7 +97,9 @@ def resnet9_kakaobrain(p):
         p is the params object 
     """
     num_class = 10
-    model = Sequential([
+    p.model.is_dann
+
+    modules = [
         conv(p, 3, 64, kernel_size=3, stride=1, padding=1),
         conv(p, 64, 128, kernel_size=5, stride=2, padding=2),
         BasicBlock(conv(p,128, 128), conv(p,128, 128)),
@@ -108,9 +108,16 @@ def resnet9_kakaobrain(p):
         BasicBlock(conv(p,256, 256), conv(p,256, 256)),
         conv(p,256, 128, kernel_size=3, stride=1, padding=0),
         nn.AdaptiveMaxPool2d((1, 1)),
-        Flatten(),
-        nn.Linear(128, num_class, bias=False),
-        Mul(0.2)]
-    )
-    model = model.to(memory_format=torch.channels_last).cuda()
+        Flatten()]
+    
+    if linear_decoder or not p.model.is_dann:
+        modules.append(nn.Linear(128, num_class, bias=True))
+    
+    elif p.model.is_dann:
+        ni = max(1,int(num_class*0.1))
+        modules.append(EiDenseLayer(128, num_class, ni=ni, split_bias=False, # true is EG
+                                     use_bias=True))
+    
+    modules.append(Mul(0.2))
+    model = Sequential(modules).to(memory_format=torch.channels_last).cuda()
     return model
