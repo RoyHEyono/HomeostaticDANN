@@ -92,13 +92,16 @@ def resnet9_kakaobrain(p:dict, linear_decoder=False):
     # https://github.com/libffcv/ffcv/blob/main/examples/cifar/train_cifar.py
     # For the model, we use a custom ResNet-9 architecture from KakaoBrain.
     # https://docs.ffcv.io/ffcv_examples/cifar10.html
+
+    Also see:
+        https://pytorch.org/blog/tensor-memory-format-matters/
     
     Args:
-        p is the params object 
+        p: parameter config object 
+        linear_decoder: if True, the model's final layer is always linear.
     """
     num_class = 10
-    p.model.is_dann
-
+    
     modules = [
         conv(p, 3, 64, kernel_size=3, stride=1, padding=1),
         conv(p, 64, 128, kernel_size=5, stride=2, padding=2),

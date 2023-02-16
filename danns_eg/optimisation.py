@@ -115,28 +115,34 @@ def get_param_groups(model, return_groups_dict=False):
     
 class SGD(Optimizer):
     def __init__(self, params, lr=0.1, weight_decay=0.0, momentum=0.9,
-                 update_algorithm:str = "gd", 
-                 exponentiated_wd = None, # to do
+                 update_algorithm: str = "gd", 
+                 weight_decay_algorithm: str = "same", 
                  positive_only: bool = False,
-                 eg_normalise: bool = False,
+                 normalise_weights: bool = False,
                  nesterov: bool = False ):
         """
         Args:
-            params : Iterable of parameters to optimize or dictionaries defining parameter groups.
+            params : Iterable of parameters or list of dictionaries defining parameter groups.
             lr :
             weight_decay:
             momentum: note this is the torch sgd version of momentum, i.e lr is applied to update v.
-                      Also note that in my impl weight decay is decoupled from the momentum. 
+                      Also note that in my impl. weight decay is decoupled from the momentum. 
                       (This seems to be slightly better than pytorch's impl but not carefully checked) 
             update_algorithm: str in {"gd", "eg"}
-            exponentiated_wd : PLACEHOLDER if None, same as exponentiated_grad, else a bool toggle. 
-                               **Not implemented yet** 
+            weight_decay_algorithm : str in {"same", "gd", "eg"}. If same (default), uses the same alg as 
+                                    "update_alg".
             positive_only : bool, if true clamps params min 0. 
-            eg_normalise : whether to normalise the sum of weights after the eg update
+            normalise_weights : whether to normalise the sum of weights after an update
+            nesterov: whether to use nesterov momentum. 
+
+        Todo:
+            A nice extension would be clamp the signs on the weights.
         """
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        update_algorithm=update_algorithm, positive_only=positive_only,
-                        eg_normalise=eg_normalise, nesterov=nesterov)
+                        update_algorithm=update_algorithm, 
+                        weight_decay_algorithm=weight_decay_algorithm,
+                        positive_only=positive_only,
+                        normalise_weights=normalise_weights, nesterov=nesterov)
         super().__init__(params, defaults)
         
     def step(self, closure: Callable = None):
@@ -158,38 +164,52 @@ class SGD(Optimizer):
                         state["v"] = torch.zeros_like(p.data) # initialise momentum buffer
                     
                     state["v"].mul_(mu).add_(p.grad.data)
-                    state["step"] += 1 # not sure if we need to track this
+                    state["step"] += 1 # not sure if we want to track this
                     
                     if group["nesterov"]:
                         p.grad += mu * state["v"]
                     else: 
                         p.grad = state["v"]
+                else:
+                    pass
 
+                if group["normalise_weights"]:
+                    state = self.state[p] 
+                    try: c = state["c"]
+                    except KeyError: 
+                        state["c"] = torch.sum(p.data*p.data.sign()).cpu().numpy()
+                        c = state["c"]
+                
+                # Update params using grad attr
                 if group["update_algorithm"] == "eg":
-                    if group["eg_normalise"]:
-                        state = self.state[p] 
-                        try: c = state["c"]
-                        except KeyError: 
-                            state["c"] = torch.sum(p.data*p.data.sign()).cpu().numpy()
-                            c = state["c"]
-
-                    p.data.mul_(torch.exp(p.sign() * p.grad.data * -group["lr"]))
-                    if group["weight_decay"] > 0.0:
-                        wd_step_size = -group["lr"] * group["weight_decay"]
-                        p.data.mul_(torch.exp(p.data.sign() * p.data * wd_step_size))
-                    
-                    if  group["eg_normalise"]: 
-                        div_factor = c/torch.sum(p.data*p.data.sign()).cpu().numpy()
-                        p.data.mul_(div_factor)
-
-                else: # normal gradient descent update
+                    p.data.mul_(torch.exp(p.sign() * p.grad.data * -group["lr"]))        
+                elif group["update_algorithm"] == "gd": # normal gradient descent update
                     p.data.add_(p.grad.data, alpha=-group["lr"])
-                    if group["weight_decay"] > 0.0:
-                        wd_step_size = -group["lr"] * group["weight_decay"]
+                else: 
+                    print("Error update algorithm should be one of ['eg', 'gd']")
+                    raise
+                
+                # Weight decay update
+                if group["weight_decay"] > 0.0:
+                    wd_step_size = -group["lr"] * group["weight_decay"]
+                    
+                    if group["weight_decay_algorithm"] == "same":
+                        group["weight_decay_algorithm"] = group["update_algorithm"]
+                    assert group["weight_decay_algorithm"] in ["gd", "eg"] 
+                    
+                    if group["weight_decay_algorithm"] == "eg":
+                        p.data.mul_(torch.exp(p.data.sign() * p.data * wd_step_size))
+                    elif group["weight_decay_algorithm"] == "gd":   
                         p.data.add_(p.data, alpha=wd_step_size)
+                
+                # Project params to postives
                 try: 
                     if group["positive_only"]: p.data.clamp_(min=0)
                 except: pass 
+
+                if  group["normalise_weights"]: 
+                    div_factor = c/torch.sum(p.data*p.data.sign()).cpu().numpy()
+                    p.data.mul_(div_factor)
             
 
 

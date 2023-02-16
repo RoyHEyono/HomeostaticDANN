@@ -5,18 +5,17 @@ from pprint import pprint
 from dataclasses import dataclass, field
 
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
-from torch.utils.data import DataLoader
-
-import torch.backends.xnnpack
-print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
-
 from omegaconf import II, MISSING, OmegaConf
 import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig
+
+import torch
+import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
+from torch.utils.data import DataLoader
+import torch.backends.xnnpack
+print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
 
 from danns_eg import utils as danns_eg_utils
 from danns_eg import dense
@@ -85,18 +84,25 @@ def get_optimiser(model: torch.nn.Module, cfg: Mapping):
     """
     Groups that may be returned by opt.get_param_groups(model) for rofk are 
     ["wix_params", "wei_params",'wex_params', 'other_params', 'biases']
-    
     """
     param_groups_list = optimisation.get_param_groups(model)
     #pprint(param_groups_list)
     for param_group in param_groups_list:
+
         group_name = param_group["name"]
         if group_name in ["wix_params", "wei_params",'wex_params']: 
             param_group["positive_only"] = True
 
-        if cfg.model.use_sep_inhib_lrs:
-            if group_name == "wix_params": param_group['lr'] = cfg.opt.wix
-            elif group_name == "wei_params": param_group['lr'] = cfg.opt.wei
+        if cfg.model.csgd: # can hardcode this as is only one layer
+            if group_name == "wix_params": 
+                param_group['lr'] = cfg.opt.lr # /np.sqrt(1)
+
+            elif group_name == "wei_params": 
+                param_group['lr'] = cfg.opt.lr / cfg.dataset.n
+
+        # if cfg.model.use_sep_inhib_lrs:
+        #     if group_name == "wix_params": param_group['lr'] = cfg.opt.wix
+        #     elif group_name == "wei_params": param_group['lr'] = cfg.opt.wei
 
     #pprint(param_groups_list)
 
