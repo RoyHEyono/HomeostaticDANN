@@ -8,6 +8,8 @@ defaults:
 hydra:
   job:
     chdir: True
+  run:
+    dir: output2
 n_epochs:
   10
 dataset:

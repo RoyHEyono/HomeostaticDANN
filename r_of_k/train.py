@@ -5,10 +5,9 @@ from pprint import pprint
 from dataclasses import dataclass, field
 
 import numpy as np
-from omegaconf import II, MISSING, OmegaConf
+from omegaconf import II, MISSING, OmegaConf, DictConfig
 import hydra
 from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig
 
 import torch
 import torch.nn as nn
@@ -155,7 +154,7 @@ def train_epoch(cfg, opt, model, loaders, epoch_i, scaler):
             y_hat = (probs>0.5).long() # labels are long (int 32)
             batch_acc = train_utils.binary_acc(y_hat, y)
         progress_bar.set_description(
-            f'Epoch {epoch_i}, batch {batch_i+1}: Acc {np.mean(batch_accs)*100}% '
+            f'Epoch {epoch_i}, batch {batch_i+1}: Acc {np.mean(batch_accs):.2f}% '
         )
         batch_accs.append(batch_acc.item())
         batch_losses.append(loss.item())
@@ -166,7 +165,6 @@ def train_epoch(cfg, opt, model, loaders, epoch_i, scaler):
 
 def eval_model(results_dict, model, loaders, epoch_i):
     """
-    This func assumes that all batch sizes are equal
     """
     loss_func = torch.nn.functional.binary_cross_entropy_with_logits
     model.eval()
@@ -180,11 +178,12 @@ def eval_model(results_dict, model, loaders, epoch_i):
                 logits = model(X)
                 probs = torch.sigmoid(logits)
                 y_hat = (probs>0.5).long() # labels are long (int 32)
-                loss += loss_func(logits.squeeze(), y.float()).item()
-                acc += train_utils.binary_acc(y_hat, y).item()*100
+                loss += loss_func(logits.squeeze(), y.float(), reduction="sum").item()
+                acc += train_utils.binary_acc(y_hat, y, reduction="sum").item()
                 n += y.size(0)
             results_dict[key+"_losses"].append(loss/n)
             results_dict[key+"_accs"].append(acc/n)
+    results_dict["epoch_idxs"].append(epoch_i)
 
 @hydra.main(config_path = "conf", config_name = "main_config", version_base=None)
 def main(cfg):
@@ -193,6 +192,7 @@ def main(cfg):
     model = build_model(cfg)
     model.to(device)
     
+
     opt = get_optimiser(model, cfg)
     print(opt)
 
@@ -203,6 +203,7 @@ def main(cfg):
         'train_losses': [], 'train_accs': [],
         'val_losses': [], 'val_accs': [],
         'test_losses': [], 'test_accs': [],
+        'epoch_idxs':[]
     }
     for epoch_i in range(cfg.n_epochs):
         eval_model(results_dict=results_dict, model=model, 

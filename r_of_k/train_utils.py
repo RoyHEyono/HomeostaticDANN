@@ -41,7 +41,10 @@ def init_dense_rofk(layer):
     """
     layer.W.data = torch.zeros(layer.W.shape)
 
-def binary_acc(yhat, y):
+def binary_acc(yhat, y, reduction="mean"):
     yhat = yhat.squeeze()
     n_correct = torch.sum(yhat==y)
-    return 1.0*n_correct/y.size(0)
+    if reduction=="mean":
+        return n_correct*100.0/y.size(0)
+    elif reduction=="sum":
+        return n_correct*100.0
