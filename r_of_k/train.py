@@ -27,7 +27,7 @@ import train_utils
 
 def build_dataloaders(cfg: Mapping):
     X,y, w_star = r_of_k.generate_noisy_r_of_k_data(
-                                            n_datapoints=cfg.dataset.n_datapoints,
+                                            n_datapoints=cfg.dataset.n_train_datapoints,
                                             n=cfg.dataset.n, 
                                             k=cfg.dataset.k, 
                                             r=0, 
@@ -35,6 +35,16 @@ def build_dataloaders(cfg: Mapping):
                                             verbose=True,
                                             noise_probs=(0.4, 0.2, 0.4))
     
+    X_val, y_val, _ = r_of_k.generate_noisy_r_of_k_data(
+                                            n_datapoints=cfg.dataset.n_val_datapoints,
+                                            n=cfg.dataset.n, 
+                                            k=cfg.dataset.k, 
+                                            r=0, 
+                                            w_star=w_star,
+                                            verbose=True,
+                                            noise_probs=None)
+    
+
     X_test, y_test, _ = r_of_k.generate_noisy_r_of_k_data(
                                             n_datapoints=cfg.dataset.n_test_datapoints,
                                             n=cfg.dataset.n, 
@@ -45,13 +55,16 @@ def build_dataloaders(cfg: Mapping):
                                             noise_probs=None)
     
     loaders = {}
-    for split in ['train','test']:
+    for split in ['train', 'val', 'test']:
         if split == 'train':
             rofk_dataset = train_utils.Dataset(X, y) 
             
+        elif split == 'val':
+            rofk_dataset = train_utils.Dataset(X_val, y_val) 
+            
         elif split == 'test':
-            # no test set right now
             rofk_dataset = train_utils.Dataset(X_test, y_test) 
+
         loaders[split] = DataLoader(rofk_dataset,
                                     batch_size=cfg.dataset.batch_size,
                                     shuffle=True if 'train' in split else False)
@@ -140,7 +153,7 @@ def train_epoch(cfg, opt, model, loaders, epoch_i, scaler):
         with torch.no_grad():
             probs = torch.sigmoid(logits)
             y_hat = (probs>0.5).long() # labels are long (int 32)
-            batch_n_correct, batch_acc = train_utils.binary_acc(y_hat, y)
+            batch_acc = train_utils.binary_acc(y_hat, y)
         progress_bar.set_description(
             f'Epoch {epoch_i}, batch {batch_i+1}: Acc {np.mean(batch_accs)*100}% '
         )
@@ -151,14 +164,27 @@ def train_epoch(cfg, opt, model, loaders, epoch_i, scaler):
     # print("Losses:", batch_losses)
     return batch_losses, batch_accs
 
-def eval_model():
-    # if loaders train_eval use that else, train
-
-    # loaders tests
-    pass
-
-def train():
-    pass
+def eval_model(results_dict, model, loaders, epoch_i):
+    """
+    This func assumes that all batch sizes are equal
+    """
+    loss_func = torch.nn.functional.binary_cross_entropy_with_logits
+    model.eval()
+    #with autocast:
+    with torch.no_grad():
+        for key in ["train", "val", "test"]:
+            loss, acc, n = 0,0,0
+            for X, y in loaders[key]:
+                X = X.to(device)
+                y = y.to(device)
+                logits = model(X)
+                probs = torch.sigmoid(logits)
+                y_hat = (probs>0.5).long() # labels are long (int 32)
+                loss += loss_func(logits.squeeze(), y.float()).item()
+                acc += train_utils.binary_acc(y_hat, y).item()*100
+                n += y.size(0)
+            results_dict[key+"_losses"].append(loss/n)
+            results_dict[key+"_accs"].append(acc/n)
 
 @hydra.main(config_path = "conf", config_name = "main_config", version_base=None)
 def main(cfg):
@@ -173,9 +199,18 @@ def main(cfg):
     loaders = build_dataloaders(cfg)
     scaler = GradScaler() 
 
+    results_dict = {
+        'train_losses': [], 'train_accs': [],
+        'val_losses': [], 'val_accs': [],
+        'test_losses': [], 'test_accs': [],
+    }
     for epoch_i in range(cfg.n_epochs):
+        eval_model(results_dict=results_dict, model=model, 
+                   loaders=loaders, epoch_i=epoch_i)
         train_epoch(cfg, opt=opt, model=model, loaders=loaders, 
                     epoch_i=epoch_i, scaler=scaler)
+        
+    pprint(results_dict)
 
     
 

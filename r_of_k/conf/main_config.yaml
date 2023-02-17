@@ -11,7 +11,8 @@ hydra:
 n_epochs:
   10
 dataset:
-  n_datapoints: 10000
+  n_train_datapoints: 10000
+  n_val_datapoints: 1000
   n_test_datapoints: 1000
   n: 5000
   k: 10

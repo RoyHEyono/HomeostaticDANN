@@ -44,4 +44,4 @@ def init_dense_rofk(layer):
 def binary_acc(yhat, y):
     yhat = yhat.squeeze()
     n_correct = torch.sum(yhat==y)
-    return n_correct, 1.0*n_correct/y.size(0)
+    return 1.0*n_correct/y.size(0)
