@@ -80,31 +80,32 @@ def build_model(cfg):
 
     return model
 
-def get_optimiser(model: torch.nn.Module, cfg: Mapping):
+def get_optimiser(model: torch.nn.Module, cfg: Mapping, verbose=False):
     """
     Groups that may be returned by opt.get_param_groups(model) for rofk are 
     ["wix_params", "wei_params",'wex_params', 'other_params', 'biases']
     """
     param_groups_list = optimisation.get_param_groups(model)
-    #pprint(param_groups_list)
     for param_group in param_groups_list:
 
         group_name = param_group["name"]
         if group_name in ["wix_params", "wei_params",'wex_params']: 
             param_group["positive_only"] = True
 
-        if cfg.model.csgd: # can hardcode this as is only one layer
+        if cfg.model.csgd: # here we can hardcode as is only one layer
             if group_name == "wix_params": 
-                param_group['lr'] = cfg.opt.lr # /np.sqrt(1)
+                param_group['lr'] = cfg.opt.lr # /np.sqrt(ne) which is 1
 
             elif group_name == "wei_params": 
                 param_group['lr'] = cfg.opt.lr / cfg.dataset.n
-
-        # if cfg.model.use_sep_inhib_lrs:
-        #     if group_name == "wix_params": param_group['lr'] = cfg.opt.wix
-        #     elif group_name == "wei_params": param_group['lr'] = cfg.opt.wei
-
-    #pprint(param_groups_list)
+        
+        elif not cfg.model.csgd:
+            if group_name == "wix_params":
+                if cfg.model.opt.wix_lr != "wex_lr": 
+                    param_group['lr'] = cfg.model.opt.wix_lr 
+            elif group_name == "wei_params": 
+                if  cfg.model.opt.wei_lr != "wex_lr": 
+                    param_group['lr'] = cfg.model.opt.wei_lr 
 
     opt = optimisation.SGD(params = param_groups_list, 
                            lr = cfg.opt.lr,
@@ -167,7 +168,7 @@ def main(cfg):
     model.to(device)
     
     opt = get_optimiser(model, cfg)
-    #print(opt)
+    print(opt)
 
     loaders = build_dataloaders(cfg)
     scaler = GradScaler() 

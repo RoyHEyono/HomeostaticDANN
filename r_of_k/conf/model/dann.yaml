@@ -2,9 +2,9 @@ defaults:
 - _self_
 
 name: dann
-csgd: True
+csgd: False
 opt:
-  wix_lr: 0.01
-  wei_lr: 0.01
+  wix_lr: "wex_lr"
+  wei_lr: 0
 
   

@@ -190,7 +190,8 @@ class EiDenseLayer(BaseModule):
         try:
             self.init_weights(**init_weights_kwargs)
         except:
-            print("Warning: Error initialising weights with default init!")
+            pass
+            #print("Warning: Error initialising weights with default init!")
 
     @property
     def W(self):
