@@ -44,18 +44,23 @@ from torch.nn import CrossEntropyLoss
 from torch.optim import lr_scheduler, Adam
 
 from data.dataloaders import get_dataloaders
-from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
-import train_utils
-from config import DANNS_DIR
-import lib.utils
-from models.sequential import Sequential
-import models.kakaobrain as kakaobrain
-import models.resnets as resnets 
-from optimization import AdamW, get_linear_schedule_with_warmup, SGD
+#from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
+import utils as train_utils
+#from config import DANNS_DIR
+#import lib.utils
+from sequential import Sequential
+#import models.kakaobrain as kakaobrain
+import resnets
+from optimisation import AdamW, get_linear_schedule_with_warmup, SGD
+import optimisation as optimizer_utils
 
 import torch.backends.xnnpack
 print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
-SCALE_DIR = DANNS_DIR/"scale_exps"
+DANNS_DIR = "/home/mila/r/roy.eyono/danns_eg/danns_eg" # BAD CODE: This needs to be changed
+
+# Concatenate the path to the current file with the path to the danns_eg directory
+SCALE_DIR = f"{DANNS_DIR}/scale_exps"
+
 
 
 Section('train', 'Training related parameters').params(
@@ -102,7 +107,7 @@ Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs
 ) 
 
 Section('exp', 'General experiment details').params(
-    ckpt_dir=Param(str, 'ckpt-dir', default=str(SCALE_DIR/'checkpoints')),
+    ckpt_dir=Param(str, 'ckpt-dir', default=f"{SCALE_DIR}/checkpoints"),
     num_workers=Param(int, 'num of CPU workers', default=4),
     use_autocast=Param(bool, 'autocast fp16', default=True),
     log_interval=Param(int, 'log-interval in terms of epochs', default=1),
@@ -113,8 +118,8 @@ Section('exp', 'General experiment details').params(
     save_results=Param(bool,'save_results', default=False)
 )
 
-def get_optimizer(p, model ):
-    params_groups =train_utils.get_param_groups(p, model)
+def get_optimizer(p, model):
+    params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     # first construct the iterable of param groups
     parameters = []
     for k, group in params_groups.items():
@@ -142,10 +147,9 @@ def get_optimizer(p, model ):
     if p.opt.algorithm.lower() == "sgd":
         opt = SGD(parameters, lr = p.opt.lr,
                    weight_decay=p.opt.wd,
-                   momentum=p.opt.momentum,
-                   exponentiated_grad=p.opt.exponentiated) 
+                   momentum=p.opt.momentum) #,exponentiated_grad=p.opt.exponentiated) 
         opt.nesterov = p.opt.nesterov
-        opt.eg_normalise = p.opt.eg_normalise
+        # opt.eg_normalise = p.opt.eg_normalise
         return opt
 
     elif p.opt.algorithm.lower() == "adamw":
@@ -274,7 +278,7 @@ if __name__ == "__main__":
         loaders = get_dataloaders(p)
         # %%
         model = build_model(p).cuda()
-        params_groups = train_utils.get_param_groups(p, model)
+        params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
 
 
         #%%
@@ -308,8 +312,7 @@ if __name__ == "__main__":
 
         if p.exp.use_wandb:
             run.summary["test_loss_auc"] = np.sum(results["test_losses"])
-
-        run.finish()
+            run.finish()
 
         if p.exp.save_results:
             pass

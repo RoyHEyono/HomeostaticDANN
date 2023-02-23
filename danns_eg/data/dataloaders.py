@@ -1,4 +1,4 @@
-from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
+#from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
 from data.cifar import get_cifar_dataloaders
 from data.mnist import get_sparse_mnist_dataloaders
 

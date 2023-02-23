@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn 
 from torch.utils.data import DataLoader, Dataset
 
-from config import DATASETS_DIR
-import train_utils
+# from config import DATASETS_DIR
+# import train_utils
 
 class SparseMnistDataset(Dataset):
     """

@@ -249,7 +249,8 @@ class EiDenseLayer(BaseModule):
         therefore x.T as W is ne x input_dim ??? Why I got error?
         """
         self.z = torch.matmul(x, self.W.T)
-        if self.b: self.z = self.z + self.b.T
+        # if self.b: self.z = self.z + self.b.T
+        if self.use_bias: self.z = self.z + self.b.T
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
         else:

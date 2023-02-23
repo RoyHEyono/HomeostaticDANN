@@ -81,7 +81,7 @@ def get_param_groups(model, return_groups_dict=False):
             continue # skip modules that do not have child parameters 
         
         if isinstance(m,  norm_layers):
-            param_groups['biases'].append(m.bias)
+            param_groups['norm_biases'].append(m.bias)
             param_groups['norm_gains'].append(m.weight)
             continue
         
