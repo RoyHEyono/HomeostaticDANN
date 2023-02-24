@@ -1,6 +1,6 @@
 #from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
-from data.cifar import get_cifar_dataloaders
-from data.mnist import get_sparse_mnist_dataloaders
+from danns_eg.data.cifar import get_cifar_dataloaders
+from danns_eg.data.mnist import get_sparse_mnist_dataloaders
 
 def get_dataloaders(p):
     if p.train.dataset == "imagenet": return get_imagenet_dataloaders(p)

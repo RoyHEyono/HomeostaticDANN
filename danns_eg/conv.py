@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from dense import DenseLayer
+# from dense import DenseLayer
 
 class HeConv2d_WeightInitPolicy():
     """

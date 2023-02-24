@@ -10,9 +10,9 @@ import torch.nn as nn
 import torch
 import numpy as np 
 
-from conv import EiConvLayer, ConvLayer
-from dense import EiDenseLayer
-from sequential import Sequential
+from danns_eg.conv import EiConvLayer, ConvLayer
+from danns_eg.dense import EiDenseLayer
+from danns_eg.sequential import Sequential
 
 class Mul(nn.Module):
     def __init__(self, weight):
