@@ -13,6 +13,10 @@ To allow scripts to import lib modules from anywhere, we install the danns_eg fo
 pip install -r requirements.txt -e .
 ```
 
+```
+python train.py --model.is_dann=True --model.normtype=ln --exp.wandb_project=Normalization_DANN --exp.wandb_entity=project_danns --exp.use_wandb=True --train.use_testset=True
+```
+
 ### Using conda 
 To install using conda, follow the following steps on mila-cluster:
 

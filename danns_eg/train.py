@@ -66,7 +66,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 Section('train', 'Training related parameters').params(
     dataset=Param(str, 'dataset', default='cifar10'),
     batch_size=Param(int, 'batch-size', default=512),
-    epochs=Param(int, 'epochs', default=100), 
+    epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=7),
     use_testset=Param(bool, 'use testset as val set', default=False),
     )
