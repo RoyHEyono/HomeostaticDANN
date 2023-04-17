@@ -13,6 +13,7 @@ import numpy as np
 from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayer
 from danns_eg.sequential import Sequential
+from danns_eg.normalization import CustomGroupNorm
 
 class Mul(nn.Module):
     def __init__(self, weight):
@@ -35,6 +36,9 @@ def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
     
     if p.model.normtype == "bn": norm_layer = nn.BatchNorm2d(c_out)
     elif p.model.normtype == "ln": norm_layer = nn.GroupNorm(1,c_out)
+    elif p.model.normtype == "c_ln": norm_layer = CustomGroupNorm(1, c_out)
+    elif p.model.normtype == "c_ln_sub": norm_layer = CustomGroupNorm(1, c_out, subtractive=True)
+    elif p.model.normtype == "c_ln_div": norm_layer = CustomGroupNorm(1, c_out, divisive=True)
     elif p.model.normtype.lower() == "none": norm_layer = None
     if norm_layer is not None: modules.append(norm_layer)
     # then everything will use relu for now
