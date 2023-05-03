@@ -4,6 +4,7 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from danns_eg.normalization import CustomGroupNorm
 
 # from dense import DenseLayer
 
@@ -157,6 +158,8 @@ class EiConvLayer(nn.Module):
         else: self.bias=None   
         self.nonlinearity = nonlinearity
         self.weight_init_policy = weight_init_policy
+        self.loss_fn = nn.MSELoss()
+        self.local_loss_mulitplier = nn.Parameter(torch.tensor(1.0))
         
         # Fisher corrections are only correct for same e and i filter params 
         # Therefore set i_params to e_params
@@ -166,7 +169,19 @@ class EiConvLayer(nn.Module):
         self.Wex = nn.Parameter(torch.randn(e_channels, in_channels, e_kernel_size, e_kernel_size))
         self.Wix = nn.Parameter(torch.randn(i_channels, in_channels, i_kernel_size, i_kernel_size))
         self.Wei = nn.Parameter(torch.randn(e_channels, i_channels))
-    
+
+        if 'p' in kwargs:
+            self.p = kwargs['p']
+            if self.p.model.normtype == "bn": self.norm_layer = nn.BatchNorm2d(e_channels)
+            elif self.p.model.normtype == "ln": self.norm_layer = nn.GroupNorm(1,e_channels)
+            elif self.p.model.normtype == "c_ln": self.norm_layer = CustomGroupNorm(1, e_channels)
+            elif self.p.model.normtype == "c_ln_sub": self.norm_layer = CustomGroupNorm(1, e_channels, subtractive=True)
+            elif self.p.model.normtype == "c_ln_div": self.norm_layer = CustomGroupNorm(1, e_channels, divisive=True)
+            elif self.p.model.normtype.lower() == "none": self.norm_layer = None
+        else:
+            self.p = None
+            self.norm_layer = None
+        
         self.init_weights()
 
     def forward(self,x):
@@ -181,9 +196,18 @@ class EiConvLayer(nn.Module):
         Wix = self.Wix.flatten(start_dim=1)
         weight = torch.reshape(Wex - torch.matmul(self.Wei, Wix),e_shape)
 
-        return F.conv2d(x, weight, self.bias, self.stride, 
+        conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, 
                         self.padding, self.dilation, self.groups)
         
+        # if self.p is not None and self.norm_layer is not None and self.training:
+        #     conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+        #     # Compute the error difference between the normalized and unnormalized conv2d
+        #     local_loss = self.local_loss_mulitplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+        #     # Compute gradients for specific parameters
+        #     local_loss.backward(retain_graph=True)
+
+        return conv2d_unnormalized
+
     def forward_old(self, x):
         #print(x.shape)
         self.e_act_map = self.e_conv(x)

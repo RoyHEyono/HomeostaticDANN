@@ -28,7 +28,7 @@ def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
     modules = []
     if p.model.is_dann == True:
         conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
-                            stride=stride,padding=padding, groups=groups, bias=False)
+                            stride=stride,padding=padding, groups=groups, bias=False, p=p)
     else:
         conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
                            padding=padding, groups=groups, bias=False)

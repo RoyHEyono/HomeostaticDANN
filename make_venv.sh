@@ -28,6 +28,7 @@ pip install tqdm
 pip install torchvision==0.9.1 --no-deps
 pip install ipython --ignore-installed
 pip install ipykernel
+pip install git+https://github.com/cooper-org/cooper.git
 
 # Orion installations
 pip install orion 
