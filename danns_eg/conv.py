@@ -199,12 +199,12 @@ class EiConvLayer(nn.Module):
         conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, 
                         self.padding, self.dilation, self.groups)
         
-        # if self.p is not None and self.norm_layer is not None and self.training:
-        #     conv2d_normalized = self.norm_layer(conv2d_unnormalized)
-        #     # Compute the error difference between the normalized and unnormalized conv2d
-        #     local_loss = self.local_loss_mulitplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-        #     # Compute gradients for specific parameters
-        #     local_loss.backward(retain_graph=True)
+        if self.p is not None and self.norm_layer is not None and self.training:
+            conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+            # Compute the error difference between the normalized and unnormalized conv2d
+            local_loss = self.local_loss_mulitplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+            # Compute gradients for specific parameters
+            local_loss.backward(retain_graph=True)
 
         return conv2d_unnormalized
 
