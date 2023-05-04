@@ -52,7 +52,7 @@ Section('train', 'Training related parameters').params(
     dataset=Param(str, 'dataset', default='cifar10'),
     batch_size=Param(int, 'batch-size', default=512),
     epochs=Param(int, 'epochs', default=50), 
-    seed=Param(int, 'seed', default=7),
+    seed=Param(int, 'seed', default=0),
     use_testset=Param(bool, 'use testset as val set', default=False),
     )
 
@@ -67,14 +67,15 @@ Section('model', 'Model Parameters').params(
     normtype=Param(str,'norm layer type - can be None', default='ln'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
+    homeostasis=Param(bool,'homoeostasis', default=True),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='SGD'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=5e-4),
+    wd=Param(float,'weight decay lambda', default=0.000001),
     momentum=Param(float,'momentum factor', default=0.9),
-    lr=Param(float, 'lr and Wex if dann', default=0.5),
+    lr=Param(float, 'lr and Wex if dann', default=0.1),
     use_sep_inhib_lrs=Param(bool,' ', default=True),
     use_sep_bias_gain_lrs=Param(bool,' ', default=False),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
@@ -82,8 +83,8 @@ Section('opt', 'optimiser parameters').params(
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
-    wei=Param(float,'lr for Wei if dann', default=0.005),
-    wix=Param(float,'lr for Wix if dann', default=0.005),
+    wei=Param(float,'lr for Wei if dann', default=0.0001),
+    wix=Param(float,'lr for Wix if dann', default=0.001),
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(
@@ -144,7 +145,6 @@ def get_optimizer(p, model):
                      weight_decay=p.opt.wd,
                      exponentiated_grad=p.opt.exponentiated) 
 
-    # TODO: Add gradient ascent optimiser for the local loss
 
 
 def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
@@ -170,11 +170,27 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
                        "update_loss":loss.cpu().item(),
                        "lr":opt.param_groups[0]['lr']})
 
-        scaler.scale(loss).backward()
+        if p.model.homeostasis:
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    if 'Wex' in name:
+                        param.grad = None
+                    # if 'multiplier' in name:
+                    #     continue
+                    if param.grad is None:
+                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    else:
+                        param.grad += torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+        else:
+            scaler.scale(loss).backward()
+                    
         scaler.step(opt)
         scaler.update()
         try: scheduler.step()
         except NameError: pass
+
+        # TODO: Add gradient ascent optimiser for the local loss lambda parameter
+        # pass
 
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc

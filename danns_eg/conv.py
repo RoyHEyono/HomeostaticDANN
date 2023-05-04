@@ -159,7 +159,10 @@ class EiConvLayer(nn.Module):
         self.nonlinearity = nonlinearity
         self.weight_init_policy = weight_init_policy
         self.loss_fn = nn.MSELoss()
-        self.local_loss_mulitplier = nn.Parameter(torch.tensor(1.0))
+        self.local_loss_multiplier = nn.Parameter(torch.tensor(1.0), requires_grad=False)
+        self.p = None
+        self.norm_layer = None
+        self.local_loss_value = None
         
         # Fisher corrections are only correct for same e and i filter params 
         # Therefore set i_params to e_params
@@ -178,9 +181,11 @@ class EiConvLayer(nn.Module):
             elif self.p.model.normtype == "c_ln_sub": self.norm_layer = CustomGroupNorm(1, e_channels, subtractive=True)
             elif self.p.model.normtype == "c_ln_div": self.norm_layer = CustomGroupNorm(1, e_channels, divisive=True)
             elif self.p.model.normtype.lower() == "none": self.norm_layer = None
-        else:
-            self.p = None
-            self.norm_layer = None
+
+        
+        if self.norm_layer is not None:
+            for param in self.norm_layer.parameters():
+                param.requires_grad = False
         
         self.init_weights()
 
@@ -200,11 +205,16 @@ class EiConvLayer(nn.Module):
                         self.padding, self.dilation, self.groups)
         
         if self.p is not None and self.norm_layer is not None and self.training:
-            conv2d_normalized = self.norm_layer(conv2d_unnormalized)
-            # Compute the error difference between the normalized and unnormalized conv2d
-            local_loss = self.local_loss_mulitplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-            # Compute gradients for specific parameters
-            local_loss.backward(retain_graph=True)
+            if self.p.model.homeostasis:
+                conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+                # Compute the error difference between the normalized and unnormalized conv2d
+                local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+                self.local_loss_value = local_loss.item()
+                # Compute gradients for specific parameters
+                local_loss.backward(retain_graph=True)
+
+        # if not self.training:
+        #     print(self.local_loss_value)
 
         return conv2d_unnormalized
 

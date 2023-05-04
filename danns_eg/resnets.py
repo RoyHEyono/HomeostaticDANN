@@ -40,7 +40,9 @@ def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
     elif p.model.normtype == "c_ln_sub": norm_layer = CustomGroupNorm(1, c_out, subtractive=True)
     elif p.model.normtype == "c_ln_div": norm_layer = CustomGroupNorm(1, c_out, divisive=True)
     elif p.model.normtype.lower() == "none": norm_layer = None
-    if norm_layer is not None: modules.append(norm_layer)
+
+    if p.model.homeostasis: norm_layer=None
+    if norm_layer is not None : modules.append(norm_layer)
     # then everything will use relu for now
     act_func = nn.ReLU(inplace=True)
     modules.append(act_func)
