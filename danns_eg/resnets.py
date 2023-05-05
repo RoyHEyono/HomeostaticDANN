@@ -24,11 +24,11 @@ class Mul(nn.Module):
 class Flatten(nn.Module):
     def forward(self, x): return x.view(x.size(0), -1)
 
-def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
+def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1, homeostasis=True):
     modules = []
     if p.model.is_dann == True:
         conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
-                            stride=stride,padding=padding, groups=groups, bias=False, p=p)
+                            stride=stride,padding=padding, groups=groups, bias=False, p=p, homeostasis=homeostasis)
     else:
         conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
                            padding=padding, groups=groups, bias=False)
@@ -41,7 +41,7 @@ def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
     elif p.model.normtype == "c_ln_div": norm_layer = CustomGroupNorm(1, c_out, divisive=True)
     elif p.model.normtype.lower() == "none": norm_layer = None
 
-    if p.model.homeostasis: norm_layer=None
+    if p.model.homeostasis and homeostasis: norm_layer=None
     if norm_layer is not None : modules.append(norm_layer)
     # then everything will use relu for now
     act_func = nn.ReLU(inplace=True)
@@ -109,13 +109,13 @@ def resnet9_kakaobrain(p:dict, linear_decoder=False):
     num_class = 10
     
     modules = [
-        conv(p, 3, 64, kernel_size=3, stride=1, padding=1),
-        conv(p, 64, 128, kernel_size=5, stride=2, padding=2),
-        BasicBlock(conv(p,128, 128), conv(p,128, 128)),
+        conv(p, 3, 64, kernel_size=3, stride=1, padding=1, homeostasis=False),
+        conv(p, 64, 128, kernel_size=5, stride=2, padding=2, homeostasis=False),
+        BasicBlock(conv(p,128, 128, homeostasis=False), conv(p,128, 128, homeostasis=False)),
         conv(p,128, 256, kernel_size=3, stride=1, padding=1),
         nn.MaxPool2d(2),
-        BasicBlock(conv(p,256, 256), conv(p,256, 256)),
-        conv(p,256, 128, kernel_size=3, stride=1, padding=0),
+        BasicBlock(conv(p,256, 256, homeostasis=False), conv(p,256, 256, homeostasis=False)),
+        conv(p,256, 128, kernel_size=3, stride=1, padding=0, homeostasis=False),
         nn.AdaptiveMaxPool2d((1, 1)),
         Flatten()]
     

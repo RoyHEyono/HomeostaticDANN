@@ -175,8 +175,6 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
                 if param.requires_grad:
                     if 'Wex' in name:
                         param.grad = None
-                    # if 'multiplier' in name:
-                    #     continue
                     if param.grad is None:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                     else:
@@ -189,9 +187,6 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
         try: scheduler.step()
         except NameError: pass
 
-        # TODO: Add gradient ascent optimiser for the local loss lambda parameter
-        # pass
-
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
 
@@ -202,7 +197,9 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         for ims, labs in loaders['train_eval']:
             with autocast():
                 out = model(ims)
-                train_loss += loss_fn_sum(out, labs)
+                loss_val = loss_fn_sum(out, labs)
+                train_loss += loss_val
+                #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
         train_acc = train_correct / n_train * 100
@@ -213,7 +210,9 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
             with autocast():
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 out = model(ims)
-                test_loss += loss_fn_sum(out, labs)
+                loss_val = loss_fn_sum(out, labs)
+                test_loss += loss_val
+                #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
         #print("Not currently running train eval!")

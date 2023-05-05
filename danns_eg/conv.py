@@ -137,7 +137,7 @@ class EiConvInit_WexMean:
 class EiConvLayer(nn.Module):
     def __init__(self, in_channels, e_channels, i_channels, e_kernel_size, i_kernel_size,
                  nonlinearity = None,bias=False, 
-                 weight_init_policy = EiConvInit_WexMean(), **kwargs):
+                 weight_init_policy = EiConvInit_WexMean(), homeostasis=True, **kwargs):
         """
         https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         no support yet for groups   
@@ -159,10 +159,11 @@ class EiConvLayer(nn.Module):
         self.nonlinearity = nonlinearity
         self.weight_init_policy = weight_init_policy
         self.loss_fn = nn.MSELoss()
-        self.local_loss_multiplier = nn.Parameter(torch.tensor(1.0), requires_grad=False)
+        self.local_loss_multiplier = nn.Parameter(torch.tensor(600.0), requires_grad=False)
         self.p = None
         self.norm_layer = None
         self.local_loss_value = None
+        self.homeostasis = homeostasis
         
         # Fisher corrections are only correct for same e and i filter params 
         # Therefore set i_params to e_params
@@ -205,16 +206,28 @@ class EiConvLayer(nn.Module):
                         self.padding, self.dilation, self.groups)
         
         if self.p is not None and self.norm_layer is not None and self.training:
-            if self.p.model.homeostasis:
+            if self.p.model.homeostasis and self.homeostasis:
                 conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+                
+                # Lagrange multiplier step
+                # self.local_loss_multiplier += 0.0001*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
+
                 # Compute the error difference between the normalized and unnormalized conv2d
                 local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
                 self.local_loss_value = local_loss.item()
                 # Compute gradients for specific parameters
-                local_loss.backward(retain_graph=True)
+                for name, param in self.named_parameters():
+                    if param.requires_grad:
+                        if 'Wei' in name or 'Wix' in name:
+                            param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+                # local_loss.backward(retain_graph=True)
 
-        # if not self.training:
-        #     print(self.local_loss_value)
+        if not self.training and self.homeostasis:
+             conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+             local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+             #print(f"Local Loss Value: {local_loss.item()}")
+
+
 
         return conv2d_unnormalized
 
