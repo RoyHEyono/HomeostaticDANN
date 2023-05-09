@@ -109,13 +109,13 @@ def resnet9_kakaobrain(p:dict, linear_decoder=False):
     num_class = 10
     
     modules = [
-        conv(p, 3, 64, kernel_size=3, stride=1, padding=1, homeostasis=False),
-        conv(p, 64, 128, kernel_size=5, stride=2, padding=2, homeostasis=False),
-        BasicBlock(conv(p,128, 128, homeostasis=False), conv(p,128, 128, homeostasis=False)),
+        conv(p, 3, 64, kernel_size=3, stride=1, padding=1),
+        conv(p, 64, 128, kernel_size=5, stride=2, padding=2),
+        BasicBlock(conv(p,128, 128), conv(p,128, 128)),
         conv(p,128, 256, kernel_size=3, stride=1, padding=1),
         nn.MaxPool2d(2),
-        BasicBlock(conv(p,256, 256, homeostasis=False), conv(p,256, 256, homeostasis=False)),
-        conv(p,256, 128, kernel_size=3, stride=1, padding=0, homeostasis=False),
+        BasicBlock(conv(p,256, 256), conv(p,256, 256)),
+        conv(p,256, 128, kernel_size=3, stride=1, padding=0),
         nn.AdaptiveMaxPool2d((1, 1)),
         Flatten()]
     

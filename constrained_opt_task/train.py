@@ -173,6 +173,8 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
+                    if 'Wix' in name or 'Wei' in name:
+                        continue
                     if 'Wex' in name:
                         param.grad = None
                     if param.grad is None:
@@ -193,42 +195,69 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
 def eval_model(epoch, model, loaders, loss_fn_sum, p):
     model.eval()
     with torch.no_grad():
-        train_correct, n_train, train_loss = 0., 0., 0.
+        train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['train_eval']:
             with autocast():
+                num_of_local_layers = 0
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
+                loc_loss = 0.0
+                for name, param in model.named_parameters():
+                    if 'local_loss_value' in name:
+                        if param.item() > 0:
+                            loc_loss += param.item()
+                            num_of_local_layers += 1
+                if num_of_local_layers > 0:
+                    loc_loss /= num_of_local_layers
+                    train_local_loss += loc_loss
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
+        train_local_loss /= n_train
         
-        test_correct, n_test, test_loss = 0., 0., 0.
+        test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast():
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
+                num_of_local_layers = 0
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
+                loc_loss = 0.0
+                for name, param in model.named_parameters():
+                    if 'local_loss_value' in name:
+                        if param.item() > 0:
+                            loc_loss += param.item()
+                            num_of_local_layers += 1
+
+                if num_of_local_layers > 0:
+                    loc_loss /= num_of_local_layers
+                    test_local_loss += loc_loss
+
         #print("Not currently running train eval!")
         test_acc = test_correct / n_test * 100
         test_loss /=  n_test
+        test_local_loss /= n_test
 
         results["test_accs"].append(test_acc)
         results["test_losses"].append(test_loss.cpu().item())
         results["train_accs"].append(train_acc)
         results["train_losses"].append(train_loss.cpu().item())
+        results["train_local_losses"].append(train_local_loss)
+        results["test_local_losses"].append(test_local_loss)
         results["ep_i"].append(epoch)
 
         if p.exp.use_wandb: 
             wandb.log({"epoch_i":epoch,
                 "test_loss":results["test_losses"][-1], "test_acc":results["test_accs"][-1],
-                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1]})
+                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],
+                "train_local_loss":results["train_local_losses"][-1], "test_local_loss":results["test_local_losses"][-1],})
 
 
 def train_model(p):
@@ -255,7 +284,7 @@ if __name__ == "__main__":
     device = train_utils.get_device()
     results = {"test_accs" :[], "test_losses": [], 
                 "train_accs" :[], "train_losses":[], "ep_i":[],
-                "model_norm":[]}
+                "model_norm":[], "train_local_losses":[], "test_local_losses":[]}
 
     p = train_utils.get_config()
     train_utils.set_seed_all(p.train.seed)

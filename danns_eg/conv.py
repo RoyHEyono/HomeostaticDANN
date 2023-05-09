@@ -159,10 +159,10 @@ class EiConvLayer(nn.Module):
         self.nonlinearity = nonlinearity
         self.weight_init_policy = weight_init_policy
         self.loss_fn = nn.MSELoss()
-        self.local_loss_multiplier = nn.Parameter(torch.tensor(600.0), requires_grad=False)
+        self.local_loss_multiplier = nn.Parameter(torch.tensor(0.0), requires_grad=False)
         self.p = None
         self.norm_layer = None
-        self.local_loss_value = None
+        self.local_loss_value = nn.Parameter(torch.tensor(0.0), requires_grad=False)
         self.homeostasis = homeostasis
         
         # Fisher corrections are only correct for same e and i filter params 
@@ -209,12 +209,16 @@ class EiConvLayer(nn.Module):
             if self.p.model.homeostasis and self.homeostasis:
                 conv2d_normalized = self.norm_layer(conv2d_unnormalized)
                 
-                # Lagrange multiplier step
-                # self.local_loss_multiplier += 0.0001*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
+                
 
                 # Compute the error difference between the normalized and unnormalized conv2d
                 local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-                self.local_loss_value = local_loss.item()
+
+                # Lagrange multiplier step
+                # self.local_loss_multiplier += 0.1*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
+
+                # Set the local loss value to the computed loss
+                self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
                 # Compute gradients for specific parameters
                 for name, param in self.named_parameters():
                     if param.requires_grad:
@@ -225,7 +229,7 @@ class EiConvLayer(nn.Module):
         if not self.training and self.homeostasis:
              conv2d_normalized = self.norm_layer(conv2d_unnormalized)
              local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-             #print(f"Local Loss Value: {local_loss.item()}")
+             # print(f"Local Loss Value: {local_loss.item()}")
 
 
 
