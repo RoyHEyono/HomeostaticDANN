@@ -294,7 +294,7 @@ if __name__ == "__main__":
         if p.exp.wandb_project == "": p.exp.wandb_project  = "220823_scale"
         params_to_log = train_utils.get_params_to_log_wandb(p)
         run = wandb.init(reinit=False, project=p.exp.wandb_project, entity=p.exp.wandb_entity,
-                            config=params_to_log, tags=[p.exp.wandb_tag])
+                            config=params_to_log, tags=[p.exp.wandb_tag], group="Lagrange Homeostasis")
         name = f'{"EG" if p.opt.exponentiated else "SGD"} lr:{p.opt.lr} wd:{p.opt.wd} m:{p.opt.momentum} '
         if p.model.is_dann:
             name += f"wix:{p.opt.inhib_lrs.wix} wei:{p.opt.inhib_lrs.wei}" 
