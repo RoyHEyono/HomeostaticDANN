@@ -24,25 +24,25 @@ class Mul(nn.Module):
 class Flatten(nn.Module):
     def forward(self, x): return x.view(x.size(0), -1)
 
-def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1, homeostasis=True):
+def conv(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
     modules = []
     if p.model.is_dann == True:
-        conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
-                            stride=stride,padding=padding, groups=groups, bias=False, p=p, homeostasis=homeostasis)
+        conv2d = EiConvLayer(c_in, c_out, int(c_out*0.7),kernel_size,kernel_size,
+                            stride=stride,padding=padding, groups=groups, bias=False, p=p)
     else:
         conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
                            padding=padding, groups=groups, bias=False)
     modules.append(conv2d)
     
-    if p.model.normtype == "bn": norm_layer = nn.BatchNorm2d(c_out)
-    elif p.model.normtype == "ln": norm_layer = nn.GroupNorm(1,c_out)
-    elif p.model.normtype == "c_ln": norm_layer = CustomGroupNorm(1, c_out)
-    elif p.model.normtype == "c_ln_sub": norm_layer = CustomGroupNorm(1, c_out, subtractive=True)
-    elif p.model.normtype == "c_ln_div": norm_layer = CustomGroupNorm(1, c_out, divisive=True)
-    elif p.model.normtype.lower() == "none": norm_layer = None
+    # if p.model.normtype == "bn": norm_layer = nn.BatchNorm2d(c_out)
+    # elif p.model.normtype == "ln": norm_layer = nn.GroupNorm(1,c_out, affine=False)
+    # elif p.model.normtype == "c_ln": norm_layer = CustomGroupNorm(1, c_out, affine=False)
+    # elif p.model.normtype == "c_ln_sub": norm_layer = CustomGroupNorm(1, c_out, subtractive=True, affine=False)
+    # elif p.model.normtype == "c_ln_div": norm_layer = CustomGroupNorm(1, c_out, divisive=True, affine=False)
+    # elif p.model.normtype.lower() == "none": norm_layer = None
 
-    if p.model.homeostasis and homeostasis: norm_layer=None
-    if norm_layer is not None : modules.append(norm_layer)
+    # if p.model.homeostasis: norm_layer=None
+    # if norm_layer is not None : modules.append(norm_layer)
     # then everything will use relu for now
     act_func = nn.ReLU(inplace=True)
     modules.append(act_func)

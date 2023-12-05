@@ -134,10 +134,33 @@ class EiConvInit_WexMean:
         try: nn.init.zeros_(layer.b)
         except AttributeError: pass # not bias being used
 
+class LocalLossMean(nn.Module):
+        def __init__(self):
+            super(LocalLossMean, self).__init__()
+
+        def forward(self, inputs, targets=None, lambda_mu=1, lambda_var=1):
+
+            mean = torch.mean(inputs, dim=(1,2,3), keepdim=True)
+            #std = torch.std(inputs, dim=(1,2,3), unbiased=False, keepdim=True)
+            mean_squared = torch.mean(torch.square(inputs), dim=(1,2,3), keepdim=True)
+
+            # Define the target values (zero mean and unit standard deviation)
+            target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
+            #target_var = torch.ones(std.shape, dtype=inputs.dtype, device=inputs.device)
+            target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
+
+            criterion = nn.MSELoss()
+
+            # Calculate the loss based on the L2 distance from the target values
+            loss = lambda_mu * torch.sqrt(criterion(mean, target_mean))  + lambda_var * torch.sqrt(criterion(mean_squared, target_mean_squared))
+            #loss = (lambda_mu * (mean - target_mean) ** 2) + (lambda_var * (std - target_var) ** 2)
+            
+            return loss.mean()
+
 class EiConvLayer(nn.Module):
     def __init__(self, in_channels, e_channels, i_channels, e_kernel_size, i_kernel_size,
                  nonlinearity = None,bias=False, 
-                 weight_init_policy = EiConvInit_WexMean(), homeostasis=True, **kwargs):
+                 weight_init_policy = EiConvInit_WexMean(), **kwargs):
         """
         https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         no support yet for groups   
@@ -158,19 +181,20 @@ class EiConvLayer(nn.Module):
         else: self.bias=None   
         self.nonlinearity = nonlinearity
         self.weight_init_policy = weight_init_policy
-        self.loss_fn = nn.MSELoss()
+        #self.loss_fn = nn.MSELoss()
+        self.loss_fn = LocalLossMean()
         self.local_loss_multiplier = nn.Parameter(torch.tensor(0.0), requires_grad=False)
         self.p = None
         self.norm_layer = None
         self.local_loss_value = nn.Parameter(torch.tensor(0.0), requires_grad=False)
-        self.homeostasis = homeostasis
-        self.multiplier_lr = 0.1
+        self.multiplier_lr = 1
+        #self.swish_fn = nn.SiLU()
         
         # Fisher corrections are only correct for same e and i filter params 
         # Therefore set i_params to e_params
-        # i_param_dict = conv2d_kwargs    
-        # self.e_conv = nn.Conv2d(in_channels, e_channels, e_kernel_size, **conv2d_kwargs)
-        # self.i_conv = nn.Conv2d(in_channels, i_channels, i_kernel_size, **i_param_dict)
+        #i_param_dict = conv2d_kwargs    
+        #self.e_conv = nn.Conv2d(in_channels, e_channels, e_kernel_size, **conv2d_kwargs)
+        #self.i_conv = nn.Conv2d(in_channels, i_channels, i_kernel_size, **i_param_dict)
         self.Wex = nn.Parameter(torch.randn(e_channels, in_channels, e_kernel_size, e_kernel_size))
         self.Wix = nn.Parameter(torch.randn(i_channels, in_channels, i_kernel_size, i_kernel_size))
         self.Wei = nn.Parameter(torch.randn(e_channels, i_channels))
@@ -178,10 +202,10 @@ class EiConvLayer(nn.Module):
         if 'p' in kwargs:
             self.p = kwargs['p']
             if self.p.model.normtype == "bn": self.norm_layer = nn.BatchNorm2d(e_channels)
-            elif self.p.model.normtype == "ln": self.norm_layer = nn.GroupNorm(1,e_channels)
-            elif self.p.model.normtype == "c_ln": self.norm_layer = CustomGroupNorm(1, e_channels)
-            elif self.p.model.normtype == "c_ln_sub": self.norm_layer = CustomGroupNorm(1, e_channels, subtractive=True)
-            elif self.p.model.normtype == "c_ln_div": self.norm_layer = CustomGroupNorm(1, e_channels, divisive=True)
+            elif self.p.model.normtype == "ln": self.norm_layer = nn.GroupNorm(1,e_channels, affine=False)
+            elif self.p.model.normtype == "c_ln": self.norm_layer = CustomGroupNorm(1, e_channels, affine=False)
+            elif self.p.model.normtype == "c_ln_sub": self.norm_layer = CustomGroupNorm(1, e_channels, subtractive=True, affine=False)
+            elif self.p.model.normtype == "c_ln_div": self.norm_layer = CustomGroupNorm(1, e_channels, divisive=True, affine=False)
             elif self.p.model.normtype.lower() == "none": self.norm_layer = None
             self.multiplier_lr = self.p.opt.lr
 
@@ -202,37 +226,55 @@ class EiConvLayer(nn.Module):
         e_shape = self.Wex.shape
         Wex = self.Wex.flatten(start_dim=1)
         Wix = self.Wix.flatten(start_dim=1)
+        
         weight = torch.reshape(Wex - torch.matmul(self.Wei, Wix),e_shape)
 
-        conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, 
-                        self.padding, self.dilation, self.groups)
+        # inh_weight = torch.reshape(torch.matmul(self.Wei, Wix), e_shape)
+
+        # exc_conv2d = F.conv2d(x, self.Wex, self.bias, self.stride, 
+                       # self.padding, self.dilation, self.groups)
+        # inh_conv2d = F.conv2d(x, inh_weight, self.bias, self.stride, 
+                        # self.padding, self.dilation, self.groups)
+
+        # conv2d_unnormalized = exc_conv2d - self.swish_fn(inh_conv2d)
+
+        conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         
         if self.p is not None and self.norm_layer is not None and self.training:
-            if self.p.model.homeostasis and self.homeostasis:
-                conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+            if self.p.model.homeostasis:
+
+                # for mini_epoch in range(10):
+                # conv2d_normalized = self.norm_layer(conv2d_unnormalized)
                 
-                # Lagrange multiplier step
-                self.local_loss_multiplier += self.multiplier_lr*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
+                # Lagrange multiplier step, TODO: Create flag here to turn on/off
+                # self.local_loss_multiplier += self.multiplier_lr*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
 
                 # Compute the error difference between the normalized and unnormalized conv2d
-                local_loss = self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+                local_loss = self.loss_fn(conv2d_unnormalized, lambda_mu=self.p.opt.lambda_homeo, lambda_var=self.p.opt.lambda_var)
 
                 # Set the local loss value to the computed loss
                 self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
 
+                # print(f"Local Loss: {self.local_loss_value}")
+
                 # Multiply local loss by the multiplier
-                local_loss*= self.local_loss_multiplier
+                # local_loss*= self.local_loss_multiplier
 
                 # Compute gradients for specific parameters
                 for name, param in self.named_parameters():
                     if param.requires_grad:
                         if 'Wei' in name or 'Wix' in name:
                             param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+                    
 
-        if not self.training and self.homeostasis:
-             conv2d_normalized = self.norm_layer(conv2d_unnormalized)
-             local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-             # print(f"Local Loss Value: {local_loss.item()}")
+        # if self.p.model.homeostasis and not self.training:
+        #      conv2d_normalized = self.norm_layer(conv2d_unnormalized)
+        #      local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
+        #      # print(f"Local Loss Value: {local_loss.item()}")
+
+        if not self.p.model.homeostasis and self.norm_layer is not None:
+            # Normalize if not homeostasis but norm is specified
+            return self.norm_layer(conv2d_unnormalized)
 
 
 

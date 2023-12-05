@@ -1,11 +1,12 @@
 #from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
 from danns_eg.data.cifar import get_cifar_dataloaders
-from danns_eg.data.mnist import get_sparse_mnist_dataloaders
+from danns_eg.data.mnist import get_sparse_mnist_dataloaders, get_sparse_fashionmnist_dataloaders
 
 def get_dataloaders(p):
     if p.train.dataset == "imagenet": return get_imagenet_dataloaders(p)
     elif "cifar" in p.train.dataset : return get_cifar_dataloaders(p) 
     elif "mnist" in p.train.dataset : return get_sparse_mnist_dataloaders(p)
+    elif "fashionmnist" in p.train.dataset: return get_sparse_fashionmnist_dataloaders(p)
     else:print(f"ERROR: {p.train.dataset} not recognised as a vaild dataset")
 
 def get_imagenet_dataloaders(p):

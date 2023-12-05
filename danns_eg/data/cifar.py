@@ -7,7 +7,6 @@ import torch
 from torch.utils.data import random_split
 
 import warnings
-from ffcv.writer import DatasetWriter
 from typing import List
 from ffcv.fields import IntField, RGBImageField
 from ffcv.loader import Loader, OrderOption
@@ -19,6 +18,9 @@ from ffcv.transforms.common import Squeeze
 
 from pathlib import Path
 from multiprocessing import cpu_count
+
+from ffcv.writer import DatasetWriter
+
 
 """
 How to make a validationsplit? plbolts?

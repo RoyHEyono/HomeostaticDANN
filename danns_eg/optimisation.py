@@ -114,7 +114,7 @@ def get_param_groups(model, return_groups_dict=False):
     return param_groups_list
     
 class SGD(Optimizer):
-    def __init__(self, params, lr=0.1, weight_decay=0.0, momentum=0.9,
+    def __init__(self, params, lr=0.1, weight_decay=0.0, momentum=0.9, inhib_momentum=0.9,
                  update_algorithm: str = "gd", 
                  weight_decay_algorithm: str = "same", 
                  positive_only: bool = False,
@@ -141,7 +141,7 @@ class SGD(Optimizer):
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
                         update_algorithm=update_algorithm, 
                         weight_decay_algorithm=weight_decay_algorithm,
-                        positive_only=positive_only,
+                        positive_only=positive_only, inhib_momentum=inhib_momentum,
                         normalise_weights=normalise_weights, nesterov=nesterov)
         super().__init__(params, defaults)
         
@@ -156,7 +156,9 @@ class SGD(Optimizer):
             for p in group["params"]:
                 if p.grad is None: continue
 
-                mu = group["momentum"]
+                if (group["name"] == "wix_params" or group["name"] == "wei_params"): mu = group["inhib_momentum"]
+                else: mu = group["momentum"]
+                
                 if mu > 0:
                     state = self.state[p]
                     if len(state) == 0:
@@ -190,7 +192,7 @@ class SGD(Optimizer):
                     raise
                 
                 # Weight decay update
-                if group["weight_decay"] > 0.0:
+                if group["weight_decay"] > 0.0 and not (group["name"] == "wix_params" or group["name"] == "wei_params"):
                     wd_step_size = -group["lr"] * group["weight_decay"]
                     
                     if group["weight_decay_algorithm"] == "same":

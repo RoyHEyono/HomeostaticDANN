@@ -14,4 +14,4 @@ module load anaconda/3
 conda activate ffcv_eg
 
 cd ..
-python train.py --opt.lr=$2 --opt.wd=$3 --opt.momentum=$4 --opt.inhib_lrs.wei=$5 --opt.inhib_lrs.wix=$6 --train.batch_size=$7 --model.normtype=$8 --exp.wandb_project=Normalization_DANN_Test --exp.wandb_entity=project_danns --exp.use_wandb=True --train.seed=$9 --train.use_testset=True
+python train.py --opt.lr=$2 --opt.wd=$3 --opt.momentum=$4 --opt.inhib_lrs.wei=$5 --opt.inhib_lrs.wix=$6 --train.batch_size=$7 --model.normtype=$8 --exp.wandb_project=Normalization_DANN_Test --exp.wandb_entity=project_danns --exp.use_wandb=False --train.seed=$9 --train.use_testset=True --exp.save_model=True

@@ -257,6 +257,187 @@ class EiDenseLayer(BaseModule):
             self.h = self.z
         return self.h
 
+
+class LocalLossMean(nn.Module):
+        def __init__(self):
+            super(LocalLossMean, self).__init__()
+
+        def forward(self, inputs, targets=None, lambda_mu=1, lambda_var=1):
+
+            mean = torch.mean(inputs, dim=1, keepdim=True)
+            mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
+
+            # Define the target values (zero mean and unit standard deviation)
+            target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
+            target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
+
+            # print(f"mean: {torch.mean(mean)}, var: {torch.mean(mean_squared - mean**2)}")
+
+            criterion = nn.MSELoss()
+
+            # Calculate the loss based on the L2 distance from the target values
+            loss = lambda_mu * torch.sqrt(criterion(mean, target_mean))  + lambda_var * torch.sqrt(criterion(mean_squared, target_mean_squared))
+            
+            return loss.mean()
+
+
+class EiDenseLayerHomeostatic(BaseModule):
+    """
+    Class modeling a subtractive feed-forward inhibition layer
+    """
+    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False,
+                 init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+        """
+        ne : number of exciatatory outputs
+        ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
+        """
+        super().__init__()
+        self.n_input = n_input
+        self.n_output = ne
+        self.nonlinearity = nonlinearity
+        self.split_bias = split_bias
+        self.use_bias = use_bias
+        self.ne = ne
+        self.homeostasis = homeostasis
+        self.loss_fn = LocalLossMean()
+        if isinstance(ni, float): self.ni = int(ne*ni)
+        elif isinstance(ni, int): self.ni = ni
+
+        self.n_input_with_bias = self.n_input+1
+
+        # to-from notation - W_post_pre and the shape is n_output x n_input
+        self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
+        # self.register_parameter('Wii', nn.Parameter(torch.empty(self.ni,self.ni), requires_grad=True))
+        self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input), requires_grad=True)
+        self.Wei = nn.Parameter(torch.empty(self.ne,self.ni), requires_grad=True)
+        # self.Wix = nn.Linear(self.n_input, self.ni)
+        # self.Wei = nn.Linear(self.ni,self.ne, bias=False)
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU()
+        self.selu = nn.SELU()
+        self.leakyrelu = nn.LeakyReLU(negative_slope=-0.5)
+        self.softplus = nn.Softplus(beta=0.5)
+        self.mish = nn.Mish()
+        self.elu = nn.ELU()
+        self.local_loss_value = None
+        self.epsilon =  1e-6
+        self.divisive_inh = False
+        
+        # init and define bias as 0, split into pos, neg if using eg
+        if self.use_bias:
+            if self.split_bias: 
+                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1)) 
+                self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+            else:
+                self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
+        else:
+            self.register_parameter('bias', None)
+            self.split_bias = False
+        
+        #try:
+        self.init_weights(**init_weights_kwargs)
+        # except:
+        #     pass
+            #print("Warning: Error initialising weights with default init!")
+
+    @property
+    def W(self):
+        return self.Wex - torch.matmul(self.Wei, self.Wix)
+
+    @property
+    def b(self):
+        if self.split_bias: 
+            return self.bias_pos + self.bias_neg
+        else: 
+            return self.bias
+    
+    def init_weights(self, numerator=2, ex_distribution="lognormal", k=1):
+        """
+        Initialises inhibitory weights to perform the centering operation of Layer Norm:
+            Wex ~ lognormal or exponential dist
+            Rows of Wix are copies of the mean row of Wex
+            Rows of Wei sum to 1, squashed after being drawn from same dist as Wex.  
+            k : the mean of the lognormal is k*std (as in the exponential dist)
+        """
+        def calc_ln_mu_sigma(mean, var):
+            """
+            Helper function: given a desired mean and var of a lognormal dist 
+            (the func arguments) calculates and returns the underlying mu and sigma
+            for the normal distribution that underlies the desired log normal dist.
+            """
+            mu_ln = np.log(mean**2 / np.sqrt(mean**2 + var))
+            sigma_ln = np.sqrt(np.log(1 + (var /mean**2)))
+            return mu_ln, sigma_ln
+
+        target_std_wex = np.sqrt(numerator*self.ne/(self.n_input*(self.ne-1)))
+        # He initialistion standard deviation derived from var(\hat{z}) = d * ne-1/ne * var(wex)E[x^2] 
+        # where Wix is set to mean row of Wex and rows of Wei sum to 1.
+
+        if ex_distribution =="exponential":
+            exp_scale = target_std_wex # The scale parameter, \beta = 1/\lambda = std
+            Wex_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.n_input))
+            Wei_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.ni))
+        
+        elif ex_distribution =="lognormal":
+            # here is where we decide how to skew the distribution
+            mu, sigma = calc_ln_mu_sigma(target_std_wex*k,target_std_wex**2)
+            Wex_np = np.random.lognormal(mu, sigma, size=(self.ne, self.n_input))
+            Wei_np = np.random.lognormal(mu, sigma, size=(self.ne, self.ni))
+        
+        Wei_np /= Wei_np.sum(axis=1, keepdims=True)
+        Wix_np = np.ones(shape=(self.ni,1))*Wex_np.mean(axis=0,keepdims=True)
+        self.Wex.data = torch.from_numpy(Wex_np).float()
+        self.Wix.data = torch.from_numpy(Wix_np).float()
+        self.Wei.data = torch.from_numpy(Wei_np).float()
+
+    def forward(self, x):
+        """
+        x is batch_dim x input_dim, 
+        therefore x.T as W is ne x input_dim ??? Why I got error?
+        """
+
+        self.hex = torch.matmul(x, self.Wex.T)
+        self.hi = torch.matmul(x, self.Wix.T)
+        self.hei = torch.matmul(self.relu(self.hi), self.Wei.T)
+        # self.hi = self.Wix(self.relu(x))
+        # self.hei = self.Wei(self.relu(self.hi))
+
+        self.z = self.hex - self.hei # Temporary solution
+
+        if self.divisive_inh:
+            #self.exp_alpha = torch.exp(self.alpha) # 1 x ni
+            self.exp_alpha = 0.01
+
+            # ne x batch = (1xni * ^ne^xni ) @ nix^btch^ +  nex1
+            self.gamma = torch.matmul((self.exp_alpha*self.relu(self.hi)), self.Wei.T) + self.epsilon
+
+            self.z = (1/ self.gamma) * self.z
+
+        # self.z = torch.matmul(x, self.W.T)
+        # if self.b: self.z = self.z + self.b.T
+        if self.use_bias: self.z = self.z + self.b.T
+        if self.nonlinearity is not None:
+            self.h = self.nonlinearity(self.z)
+        else:
+            self.h = self.z
+
+        if self.homeostasis and self.training:
+            
+            local_loss = self.loss_fn(self.h)
+            self.local_loss_value = local_loss.item()
+
+            # Set the local loss value to the computed loss
+            # self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
+            
+            # Compute gradients for specific parameters
+            for name, param in self.named_parameters():
+                if param.requires_grad:
+                    if 'Wei' in name or 'Wix' in name:
+                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+        
+
+        return self.h
+
         
 def init_eidense_ICLR(layer):
     """ 

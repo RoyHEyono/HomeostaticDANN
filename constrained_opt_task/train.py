@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 import wandb
 from orion.client import report_objective
 from pathlib import Path
+import json
+from fastargs.dict_utils import NestedNamespace
 
 
 import torch 
@@ -38,6 +40,7 @@ from danns_eg.sequential import Sequential
 import danns_eg.resnets as resnets
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
+from munch import DefaultMunch
 
 import torch.backends.xnnpack
 print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
@@ -67,7 +70,7 @@ Section('model', 'Model Parameters').params(
     normtype=Param(str,'norm layer type - can be None', default='ln'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(bool,'homoeostasis', default=True),
+    homeostasis=Param(bool,'homeostasis', default=True),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -79,7 +82,9 @@ Section('opt', 'optimiser parameters').params(
     use_sep_inhib_lrs=Param(bool,' ', default=True),
     use_sep_bias_gain_lrs=Param(bool,' ', default=False),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
-    nesterov=Param(bool, 'bool for nesterov momentum', False)
+    nesterov=Param(bool, 'bool for nesterov momentum', False),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1e-1),
+    lambda_var=Param(float, 'lambda homeostasis', default=1e-1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
@@ -102,8 +107,9 @@ Section('exp', 'General experiment details').params(
     wandb_project=Param(str, 'project under which to log runs', default=""),
     wandb_entity=Param(str, 'team under which to log runs', default=""),
     wandb_tag=Param(str, 'tag under which to log runs', default="default"),
-    save_results=Param(bool,'save_results', default=False)
-)
+    save_results=Param(bool,'save_results', default=False),
+    save_model=Param(bool, 'save model', default=False),
+) #TODO: Add wandb group param
 
 def get_optimizer(p, model):
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
@@ -147,7 +153,7 @@ def get_optimizer(p, model):
 
 
 
-def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
+def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
     for ims, labs in loaders['train']:
@@ -175,12 +181,12 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler):
                 if param.requires_grad:
                     if 'Wix' in name or 'Wei' in name:
                         continue
-                    if 'Wex' in name:
-                        param.grad = None
-                    if param.grad is None:
-                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                    else:
-                        param.grad += torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    
+                    
+                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    
+                    # if 'Wex' in name:
+                    #     param.grad = None # This locks in the homeostatic loss only
         else:
             scaler.scale(loss).backward()
                     
@@ -279,12 +285,31 @@ def build_model(p):
     model = resnets.resnet9_kakaobrain(p)
     return model
 
+def convert_to_dict(obj):
+    if isinstance(obj, NestedNamespace):
+        obj_dict = obj.__dict__
+        for key, value in obj_dict.items():
+            if isinstance(value, NestedNamespace):
+                obj_dict[key] = convert_to_dict(value)
+        return obj_dict
+    elif isinstance(obj, list):
+        return [convert_to_dict(item) if isinstance(item, NestedNamespace) else item for item in obj]
+    else:
+        return obj
+
 if __name__ == "__main__":
     print(f"We're at: {os.getcwd()}")
     device = train_utils.get_device()
     results = {"test_accs" :[], "test_losses": [], 
                 "train_accs" :[], "train_losses":[], "ep_i":[],
                 "model_norm":[], "train_local_losses":[], "test_local_losses":[]}
+
+    # # Load json file
+    # with open('notebooks/saved_models/model_resnet9_lr_0.1_wd_1e-06_m_0.9_norm_None_epochs_50_seed_5_lagrangian_False.json', 'r') as f:
+    #     model_json = json.load(f)
+
+    # # Load model weights
+    # p = DefaultMunch.fromDict(model_json)
 
     p = train_utils.get_config()
     train_utils.set_seed_all(p.train.seed)
@@ -294,7 +319,7 @@ if __name__ == "__main__":
         if p.exp.wandb_project == "": p.exp.wandb_project  = "220823_scale"
         params_to_log = train_utils.get_params_to_log_wandb(p)
         run = wandb.init(reinit=False, project=p.exp.wandb_project, entity=p.exp.wandb_entity,
-                            config=params_to_log, tags=[p.exp.wandb_tag], group="Lagrange Homeostasis")
+                            config=params_to_log, tags=[p.exp.wandb_tag])
         name = f'{"EG" if p.opt.exponentiated else "SGD"} lr:{p.opt.lr} wd:{p.opt.wd} m:{p.opt.momentum} '
         if p.model.is_dann:
             name += f"wix:{p.opt.inhib_lrs.wix} wei:{p.opt.inhib_lrs.wei}" 
@@ -316,14 +341,21 @@ if __name__ == "__main__":
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
 
-    log_epochs = 1
-    progress_bar = tqdm(range(1,1+p.train.epochs))
+    log_epochs = 10
+    progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler)
-        if epoch%log_epochs==0:
+        train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch)
+        if epoch%1==0:
             eval_model(epoch, model, loaders, loss_fn_sum, p)          
             progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
+        if epoch%log_epochs==0:
+            if p.exp.save_model:
+                # Create unique model name given params that includes normalization type
+                model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_epoch_{epoch}.pt"
+                if p.model.homeostasis:
+                    model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_lambda_mu_{p.opt.lambda_homeo}_lambda_var_{p.opt.lambda_var}_epoch_{epoch}.pt"
+                torch.save(model.state_dict(), model_name)
 
     if p.exp.use_wandb:
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])
@@ -336,6 +368,27 @@ if __name__ == "__main__":
     if p.exp.save_results:
         pass
 
+    if p.exp.save_model:
+        # Create unique model name given params that includes normalization type
+        model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}.pt"
+
+        if p.model.homeostasis:
+                model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_lambda_mu_{p.opt.lambda_homeo}_lambda_var_{p.opt.lambda_var}_epoch_{epoch}.pt"
+        
+        torch.save(model.state_dict(), model_name)
+
+        # Write the json string to a file
+        # Convert the dictionary to a JSON string
+        cfgg = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}.json"
+        
+        if p.model.homeostasis:
+            cfgg = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_lambda_mu_{p.opt.lambda_homeo}_lambda_var_{p.opt.lambda_var}.json"
+        dict_p = convert_to_dict(p)
+        dict_p["res"] = results
+        json_string = json.dumps(dict_p)
+        with open(cfgg, "w") as f:
+            f.write(json_string)
+
 
 
     
@@ -347,3 +400,5 @@ if __name__ == "__main__":
 
 
 
+
+# %%
