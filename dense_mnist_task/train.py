@@ -56,7 +56,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 Section('train', 'Training related parameters').params(
     dataset=Param(str, 'dataset', default='mnist'),
     batch_size=Param(int, 'batch-size', default=32),
-    epochs=Param(int, 'epochs', default=50), 
+    epochs=Param(int, 'epochs', default=1), 
     seed=Param(int, 'seed', default=0),
     use_testset=Param(bool, 'use testset as val set', default=False),
     )
@@ -329,6 +329,7 @@ if __name__ == "__main__":
     scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
+    loss_fn_no_reduction = CrossEntropyLoss(label_smoothing=0.1, reduction='none')
 
     log_epochs = 10
     progress_bar = tqdm(range(1,1+(EPOCHS)))
@@ -461,23 +462,47 @@ if __name__ == "__main__":
     model.clear_output()
     model.register_hooks() # Register the forward hooks again
     model.evalution_mode=True
+    lst_color = []
+    var_data = []
+    var_data_lbl = []
 
-    with torch.no_grad():
-        for ims, labs in loaders['train']:
-                with autocast():
-                    out = model(ims)
+    if p.train.dataset=='mnist':
+        with torch.no_grad():
+            for ims, labs in loaders['test']:
+                    with autocast():
+                        out = model(ims)
+                        bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
+                        softmax_score = np.array([max(x).cpu().item() for x in out])
+                        # Zero if wrong, softmax confident if correct
+                        lst_color.extend(np.multiply(bool_acc, softmax_score))
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist' :
+        with torch.no_grad():
+            for ims, labs in loaders['ood']:
+                    with autocast():
+                        out = model(ims)
+                        bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
+                        softmax_score = np.array([max(x).cpu().item() for x in out])
+                        # Zero if wrong, softmax confident if correct
+                        lst_color.extend(np.multiply(bool_acc, softmax_score))
+
     
     model.evalution_mode=False
 
     # Plot the fourth subplot
-    plt.subplot(1, 3, 1)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
+    plt.subplot(1, 3, 2)
+    color = np.linspace(0, 1, len(model.fc1_output))
+    layer_output = np.array(model.fc1_output)
     print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=color, cmap='viridis', alpha=0.6)
+    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
+    var_data.append(layer_output[:,1])
     plt.xlabel('Mean')
     plt.ylabel('Variance')
-    plt.title('Layer 3 (Train) Eval Mode - MNIST')
+    if p.train.dataset=='mnist':
+        plt.title('Test - MNIST')
+        var_data_lbl.append('Test - MNIST')
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
+        plt.title(f'OOD: {p.train.dataset}')
+        var_data_lbl.append(f'OOD: {p.train.dataset}')
 
     model.remove_hooks()
 
@@ -492,28 +517,40 @@ if __name__ == "__main__":
     model.clear_output()
     model.register_hooks() # Register the forward hooks again
     model.evalution_mode=True
-
+    lst_color = []
     with torch.no_grad():
-        for ims, labs in loaders['test']:
+        for ims, labs in loaders['train']:
                 with autocast():
                     out = model(ims)
+                    bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
+                    softmax_score = np.array([max(x).cpu().item() for x in out])
+                    # Zero if wrong, softmax confident if correct
+                    lst_color.extend(np.multiply(bool_acc, softmax_score))
+                    
     
     model.evalution_mode=False
 
     # Plot the fifth subplot
-    plt.subplot(1, 3, 2)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
+    plt.subplot(1, 3, 1)
+    color = np.linspace(0, 1, len(model.fc1_output))
+    layer_output = np.array(model.fc1_output)
     print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=color, cmap='viridis', alpha=0.6)
+    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
+    var_data.append(layer_output[:,1])
     plt.xlabel('Mean')
     plt.ylabel('Variance')
-    plt.title('Layer 3 (Test) Eval Mode - MNIST')
+    if p.train.dataset=='mnist':
+        plt.title('Train - MNIST')
+        var_data_lbl.append('Train - MNIST')
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
+        plt.title(f'ID: {p.train.dataset}')
+        var_data_lbl.append(f'ID: {p.train.dataset}')
 
     model.remove_hooks()
     model.clear_output()
     model.register_hooks() # Register the forward hooks again
     model.evalution_mode=True
+    lst_color = []
 
     ood_loader = get_sparse_fashionmnist_dataloaders(p)
 
@@ -521,18 +558,24 @@ if __name__ == "__main__":
         for ims, labs in ood_loader['test']:
                 with autocast():
                     out = model(ims)
+                    bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
+                    softmax_score = np.array([max(x).cpu().item() for x in out])
+                    # Zero if wrong, softmax confident if correct
+                    lst_color.extend(np.multiply(bool_acc, softmax_score))
     
     model.evalution_mode=False
 
     # Plot the sixth subplot
     plt.subplot(1, 3, 3)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
+    color = np.linspace(0, 1, len(model.fc1_output))
+    layer_output = np.array(model.fc1_output)
     print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=color, cmap='viridis', alpha=0.6)
+    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
+    var_data.append(layer_output[:,1])
+    var_data_lbl.append('Test - FashionMNIST')
     plt.xlabel('Mean')
     plt.ylabel('Variance')
-    plt.title('Layer 3 (Train) Eval Mode - FashionMNIST')
+    plt.title('Test - FashionMNIST')
 
     # Adjust layout for better spacing
     plt.tight_layout()
@@ -541,7 +584,133 @@ if __name__ == "__main__":
     model.remove_hooks()
 
     if p.exp.save_results:
-        plt.savefig('fashionmnist_evaluation.pdf')
+        plt.savefig('ood_scatter_plot.pdf')
+
+    plt.figure(figsize=(5, 5))
+
+    # Create a violin plot
+    plt.violinplot(var_data, showmeans=False, showmedians=True)
+    plt.title('Variance across distributions')
+    #plt.xlabel('Distributions')
+    plt.ylabel('Variance')
+    plt.yscale('log')
+
+    # Customize x-axis labels if needed
+    plt.xticks(np.arange(1, len(var_data) + 1), [f'{var_data_lbl[i]}' for i in range(0, len(var_data))])
+
+    if p.exp.save_results:
+        plt.savefig('ood_violin_plot.pdf')
+
+
+    # var vs loss
+
+    plt.figure(figsize=(15, 5))
+
+    model.clear_output()
+    model.register_hooks() # Register the forward hooks again
+    model.evalution_mode=True
+    loss_arr = []
+
+    if p.train.dataset=='mnist':
+        with torch.no_grad():
+            for ims, labs in loaders['train']:
+                    with autocast():
+                        out = model(ims)
+                        lss = loss_fn_no_reduction(out, labs)
+                        loss_arr.extend(lss.cpu().numpy())
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
+        with torch.no_grad():
+            for ims, labs in loaders['ood']:
+                    with autocast():
+                        out = model(ims)
+                        lss = loss_fn_no_reduction(out, labs)
+                        loss_arr.extend(lss.cpu().numpy())
+
+    
+    model.evalution_mode=False
+
+    # Plot the fourth subplot
+    plt.subplot(1, 3, 2)
+    color = np.linspace(0, 1, len(model.fc3_output))
+    layer_output = np.array(model.fc3_output)
+    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
+    plt.xlabel('Variance')
+    plt.ylabel('Loss')
+    if p.train.dataset=='mnist':
+        plt.title('Test - MNIST')
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
+        plt.title(f'OOD: {p.train.dataset}')
+
+    model.remove_hooks()
+
+
+    # # Plot the sixth subplot
+    # plt.subplot(2, 3, 5)
+    # # plot the train local loss
+    # plt.plot(results["train_local_losses"], label='Train Local loss')
+    # plt.xlabel('Epochs')
+    # plt.ylabel('Train Local Loss')
+
+    model.clear_output()
+    model.register_hooks() # Register the forward hooks again
+    model.evalution_mode=True
+    loss_arr = []
+    with torch.no_grad():
+        for ims, labs in loaders['train']:
+                with autocast():
+                    out = model(ims)
+                    lss = loss_fn_no_reduction(out, labs)
+                    loss_arr.extend(lss.cpu().numpy())
+                    
+    
+    model.evalution_mode=False
+
+    # Plot the fifth subplot
+    plt.subplot(1, 3, 1)
+    color = np.linspace(0, 1, len(model.fc3_output))
+    layer_output = np.array(model.fc3_output)
+    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
+    plt.xlabel('Variance')
+    plt.ylabel('Loss')
+    if p.train.dataset=='mnist':
+        plt.title('Train - MNIST')
+    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
+        plt.title(f'ID: {p.train.dataset}')
+
+    model.remove_hooks()
+    model.clear_output()
+    model.register_hooks() # Register the forward hooks again
+    model.evalution_mode=True
+    loss_arr = []
+
+    ood_loader = get_sparse_fashionmnist_dataloaders(p)
+
+    with torch.no_grad():
+        for ims, labs in ood_loader['test']:
+                with autocast():
+                    out = model(ims)
+                    lss = loss_fn_no_reduction(out, labs)
+                    loss_arr.extend(lss.cpu().numpy())
+    
+    model.evalution_mode=False
+
+    # Plot the sixth subplot
+    plt.subplot(1, 3, 3)
+    color = np.linspace(0, 1, len(model.fc3_output))
+    layer_output = np.array(model.fc3_output)
+    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
+    plt.xlabel('Variance')
+    plt.ylabel('Loss')
+    plt.title('Test - FashionMNIST')
+
+    # Adjust layout for better spacing
+    plt.tight_layout()
+
+    # Don't forget to unregister the hook after using it
+    model.remove_hooks()
+
+    if p.exp.save_results:
+        plt.savefig('loss_var_scatter_plot.pdf')
     
 
     # Print best test and training accuracy

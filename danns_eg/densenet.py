@@ -14,6 +14,7 @@ class DenseDANN(nn.Module):
         ni = max(1,int(hidden_size*0.1))
         self.fc1 = EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
                                      use_bias=True)
+        self.fc1_output = []
         self.relu = nn.ReLU()
         self.fc2 = EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
                                      use_bias=True)
@@ -49,18 +50,21 @@ class DenseDANN(nn.Module):
         return forward_hook
 
     def register_hooks(self):
+        self.fc1_hook = self.fc1.register_forward_hook(self.list_forward_hook(self.fc1_output))
         self.fc2_hook = self.fc2.register_forward_hook(self.list_forward_hook(self.fc2_output))
         self.fc3_hook = self.fc3.register_forward_hook(self.list_forward_hook(self.fc3_output))
         self.fc4_hook = self.fc4.register_forward_hook(self.list_forward_hook(self.fc4_output))
 
 
     def remove_hooks(self):
+        self.fc1_hook.remove()
         self.fc2_hook.remove()
         self.fc3_hook.remove()
         self.fc4_hook.remove()
 
     # clear all the output lists
     def clear_output(self):
+        self.fc1_output = []
         self.fc2_output = []
         self.fc3_output = []
         self.fc4_output = []
