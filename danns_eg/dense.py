@@ -319,7 +319,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.softplus = nn.Softplus(beta=0.5)
         self.mish = nn.Mish()
         self.elu = nn.ELU()
-        self.local_loss_value = None
+        self.local_loss_value = 0
         self.epsilon =  1e-6
         self.divisive_inh = False
         
@@ -421,10 +421,12 @@ class EiDenseLayerHomeostatic(BaseModule):
         else:
             self.h = self.z
 
+        
+        self.local_loss_value = self.loss_fn(self.h).item()
+
         if self.homeostasis and self.training:
             
             local_loss = self.loss_fn(self.h)
-            self.local_loss_value = local_loss.item()
 
             # Set the local loss value to the computed loss
             # self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)

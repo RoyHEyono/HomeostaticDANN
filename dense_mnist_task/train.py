@@ -22,6 +22,7 @@ from orion.client import report_objective
 from pathlib import Path
 import json
 from fastargs.dict_utils import NestedNamespace
+import pickle as pkl
 
 
 import torch 
@@ -42,7 +43,8 @@ import danns_eg.densenet as densenets
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
 from munch import DefaultMunch
-from danns_eg.data.mnist import get_sparse_fashionmnist_dataloaders
+from danns_eg.data.mnist import get_sparse_fashionmnist_dataloaders, get_sparse_mnist_dataloaders
+from utils import ood_scatter_plot, recon_var_plot, mean_plot, var_plot
 
 import torch.backends.xnnpack
 print("XNNPACK is enabled: ", torch.backends.xnnpack.enabled, "\n")
@@ -56,7 +58,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 Section('train', 'Training related parameters').params(
     dataset=Param(str, 'dataset', default='mnist'),
     batch_size=Param(int, 'batch-size', default=32),
-    epochs=Param(int, 'epochs', default=1), 
+    epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
     use_testset=Param(bool, 'use testset as val set', default=False),
     )
@@ -112,7 +114,9 @@ Section('exp', 'General experiment details').params(
     wandb_tag=Param(str, 'tag under which to log runs', default="default"),
     save_results=Param(bool,'save_results', default=False),
     save_model=Param(bool, 'save model', default=False),
+    name=Param(str, 'name of the run', default=""),
 ) #TODO: Add wandb group param
+
 
 def get_optimizer(p, model):
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
@@ -143,7 +147,7 @@ def get_optimizer(p, model):
     if p.opt.algorithm.lower() == "sgd":
         opt = SGD(parameters, lr = p.opt.lr,
                    weight_decay=p.opt.wd,
-                   momentum=p.opt.momentum) #,exponentiated_grad=p.opt.exponentiated)  
+                   momentum=p.opt.momentum, inhib_momentum=p.opt.inhib_momentum) #,exponentiated_grad=p.opt.exponentiated)  
         opt.nesterov = p.opt.nesterov
         # opt.eg_normalise = p.opt.eg_normalise
         return opt
@@ -339,383 +343,42 @@ if __name__ == "__main__":
         if epoch%1==0:
             eval_model(epoch, model, loaders, loss_fn_sum, p)          
             progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
-        if epoch%log_epochs==0:
-            if p.exp.save_model:
-                # Create unique model name given params that includes normalization type
-                model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_epoch_{epoch}.pt"
-                if p.model.homeostasis:
-                    model_name = f"model_{p.model.name}_lr_{p.opt.lr}_wd_{p.opt.wd}_m_{p.opt.momentum}_norm_{p.model.normtype}_epochs_{p.train.epochs}_seed_{p.train.seed}_lagrangian_{p.model.homeostasis}_lambda_mu_{p.opt.lambda_homeo}_lambda_var_{p.opt.lambda_var}_epoch_{epoch}.pt"
-                torch.save(model.state_dict(), model_name)
 
     if p.exp.use_wandb:
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])
         run.finish()
 
-    
+    # Save pickle of layers
+    layers_dict = []
+    for layer_num in range(1,2):
+        layers_dict.append(np.array(getattr(model, f"fc{layer_num}_output")))
 
-    # Create a 1x3 subplot layout
-    plt.figure(figsize=(15, 5))  # Adjust the figure size as needed
+    if not p.exp.name == "":
 
-    # Plot the first subplot
-    plt.subplot(1, 3, 1)
-    # Plot the mean line
-    layer_output = np.array(model.fc2_output)
-    mu_mu = layer_output[:,0]
-    mu_std = layer_output[:,1]
-    x = range(len(mu_mu))
-    plt.plot(x, mu_mu, label='Mean Line')
-    plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Mean')
-    plt.title('Layer 2')
+        # Open the file in binary write mode ('wb')
+        with open(f"{p.exp.name}_layers.pkl", 'wb') as file:
+            # Use pickle.dump() to save the list to the file
+            pkl.dump(layers_dict, file)
 
-    # Plot the second subplot
-    plt.subplot(1, 3, 2)
-    layer_output = np.array(model.fc3_output)
-    mu_mu = layer_output[:,0]
-    mu_std = layer_output[:,1]
-    x = range(len(mu_mu))
-    plt.plot(x, mu_mu, label='Mean Line')
-    plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Mean')
-    plt.title('Layer 3')
+        with open(f"{p.exp.name}_results.pkl", 'wb') as file:
+            # Use pickle.dump() to save the list to the file
+            pkl.dump(results, file)
 
-    # Plot the third subplot
-    plt.subplot(1, 3, 3)
-    layer_output = np.array(model.fc4_output)
-    mu_mu = layer_output[:,0]
-    mu_std = layer_output[:,1]
-    x = range(len(mu_mu))
-    plt.plot(x, mu_mu, label='Mean Line')
-    plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Mean')
-    plt.title('Layer 4')
-
-    if p.exp.save_results:
-        plt.savefig('mean_line_training.pdf')
-
-    
-    # Line plot here
-
-    # Create a 1x3 subplot layout
-    plt.figure(figsize=(15, 5))  # Adjust the figure size as needed
-
-    # Plot the first subplot
-    plt.subplot(1, 3, 1)
-    # Plot the mean line
-    layer_output = np.array(model.fc2_output)
-    var_mu = layer_output[:,2]
-    var_std = layer_output[:,3]
-    x = range(len(var_mu))
-    plt.plot(x, var_mu, label='Mean Line')
-    plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
-    plt.yscale('log')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Variance')
-    plt.title('Layer 2')
-
-    # Plot the second subplot
-    plt.subplot(1, 3, 2)
-    layer_output = np.array(model.fc3_output)
-    var_mu = layer_output[:,2]
-    var_std = layer_output[:,3]
-    x = range(len(var_mu))
-    plt.plot(x, var_mu, label='Mean Line')
-    plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
-    plt.yscale('log')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Variance')
-    plt.title('Layer 3')
-
-    # Plot the third subplot
-    plt.subplot(1, 3, 3)
-    layer_output = np.array(model.fc4_output)
-    var_mu = layer_output[:,2]
-    var_std = layer_output[:,3]
-    x = range(len(var_mu))
-    plt.plot(x, var_mu, label='Mean Line')
-    plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
-    plt.yscale('log')
-    # Add labels and title
-    plt.xlabel('Steps')
-    plt.ylabel('Variance')
-    plt.title('Layer 4')
-
-    if p.exp.save_results:
-        plt.savefig('var_line_training.pdf')
+        torch.save(model.state_dict(), f"{p.exp.name}.pt")
 
 
-    # Line plot ends here
+        # Generate plots here
+        mean_plot(model)
+        var_plot(model)
         
-    
-
-
-    plt.figure(figsize=(15, 5))
-
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    lst_color = []
-    var_data = []
-    var_data_lbl = []
-
-    if p.train.dataset=='mnist':
-        with torch.no_grad():
-            for ims, labs in loaders['test']:
-                    with autocast():
-                        out = model(ims)
-                        bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
-                        softmax_score = np.array([max(x).cpu().item() for x in out])
-                        # Zero if wrong, softmax confident if correct
-                        lst_color.extend(np.multiply(bool_acc, softmax_score))
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist' :
-        with torch.no_grad():
-            for ims, labs in loaders['ood']:
-                    with autocast():
-                        out = model(ims)
-                        bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
-                        softmax_score = np.array([max(x).cpu().item() for x in out])
-                        # Zero if wrong, softmax confident if correct
-                        lst_color.extend(np.multiply(bool_acc, softmax_score))
-
-    
-    model.evalution_mode=False
-
-    # Plot the fourth subplot
-    plt.subplot(1, 3, 2)
-    color = np.linspace(0, 1, len(model.fc1_output))
-    layer_output = np.array(model.fc1_output)
-    print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
-    var_data.append(layer_output[:,1])
-    plt.xlabel('Mean')
-    plt.ylabel('Variance')
-    if p.train.dataset=='mnist':
-        plt.title('Test - MNIST')
-        var_data_lbl.append('Test - MNIST')
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
-        plt.title(f'OOD: {p.train.dataset}')
-        var_data_lbl.append(f'OOD: {p.train.dataset}')
-
-    model.remove_hooks()
-
-
-    # # Plot the sixth subplot
-    # plt.subplot(2, 3, 5)
-    # # plot the train local loss
-    # plt.plot(results["train_local_losses"], label='Train Local loss')
-    # plt.xlabel('Epochs')
-    # plt.ylabel('Train Local Loss')
-
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    lst_color = []
-    with torch.no_grad():
-        for ims, labs in loaders['train']:
-                with autocast():
-                    out = model(ims)
-                    bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
-                    softmax_score = np.array([max(x).cpu().item() for x in out])
-                    # Zero if wrong, softmax confident if correct
-                    lst_color.extend(np.multiply(bool_acc, softmax_score))
-                    
-    
-    model.evalution_mode=False
-
-    # Plot the fifth subplot
-    plt.subplot(1, 3, 1)
-    color = np.linspace(0, 1, len(model.fc1_output))
-    layer_output = np.array(model.fc1_output)
-    print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
-    var_data.append(layer_output[:,1])
-    plt.xlabel('Mean')
-    plt.ylabel('Variance')
-    if p.train.dataset=='mnist':
-        plt.title('Train - MNIST')
-        var_data_lbl.append('Train - MNIST')
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
-        plt.title(f'ID: {p.train.dataset}')
-        var_data_lbl.append(f'ID: {p.train.dataset}')
-
-    model.remove_hooks()
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    lst_color = []
-
-    ood_loader = get_sparse_fashionmnist_dataloaders(p)
-
-    with torch.no_grad():
-        for ims, labs in ood_loader['test']:
-                with autocast():
-                    out = model(ims)
-                    bool_acc = np.array([int(x) for x in out.argmax(1).eq(labs)])
-                    softmax_score = np.array([max(x).cpu().item() for x in out])
-                    # Zero if wrong, softmax confident if correct
-                    lst_color.extend(np.multiply(bool_acc, softmax_score))
-    
-    model.evalution_mode=False
-
-    # Plot the sixth subplot
-    plt.subplot(1, 3, 3)
-    color = np.linspace(0, 1, len(model.fc1_output))
-    layer_output = np.array(model.fc1_output)
-    print("lenth of layer output", len(layer_output))
-    plt.scatter(layer_output[:,0], layer_output[:,1], c=lst_color, cmap='RdYlGn', alpha=0.6)
-    var_data.append(layer_output[:,1])
-    var_data_lbl.append('Test - FashionMNIST')
-    plt.xlabel('Mean')
-    plt.ylabel('Variance')
-    plt.title('Test - FashionMNIST')
-
-    # Adjust layout for better spacing
-    plt.tight_layout()
-
-    # Don't forget to unregister the hook after using it
-    model.remove_hooks()
-
-    if p.exp.save_results:
-        plt.savefig('ood_scatter_plot.pdf')
-
-    plt.figure(figsize=(5, 5))
-
-    # Create a violin plot
-    plt.violinplot(var_data, showmeans=False, showmedians=True)
-    plt.title('Variance across distributions')
-    #plt.xlabel('Distributions')
-    plt.ylabel('Variance')
-    plt.yscale('log')
-
-    # Customize x-axis labels if needed
-    plt.xticks(np.arange(1, len(var_data) + 1), [f'{var_data_lbl[i]}' for i in range(0, len(var_data))])
-
-    if p.exp.save_results:
-        plt.savefig('ood_violin_plot.pdf')
-
-
-    # var vs loss
-
-    plt.figure(figsize=(15, 5))
-
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    loss_arr = []
-
-    if p.train.dataset=='mnist':
-        with torch.no_grad():
-            for ims, labs in loaders['train']:
-                    with autocast():
-                        out = model(ims)
-                        lss = loss_fn_no_reduction(out, labs)
-                        loss_arr.extend(lss.cpu().numpy())
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
-        with torch.no_grad():
-            for ims, labs in loaders['ood']:
-                    with autocast():
-                        out = model(ims)
-                        lss = loss_fn_no_reduction(out, labs)
-                        loss_arr.extend(lss.cpu().numpy())
-
-    
-    model.evalution_mode=False
-
-    # Plot the fourth subplot
-    plt.subplot(1, 3, 2)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
-    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
-    plt.xlabel('Variance')
-    plt.ylabel('Loss')
-    if p.train.dataset=='mnist':
-        plt.title('Test - MNIST')
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
-        plt.title(f'OOD: {p.train.dataset}')
-
-    model.remove_hooks()
-
-
-    # # Plot the sixth subplot
-    # plt.subplot(2, 3, 5)
-    # # plot the train local loss
-    # plt.plot(results["train_local_losses"], label='Train Local loss')
-    # plt.xlabel('Epochs')
-    # plt.ylabel('Train Local Loss')
-
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    loss_arr = []
-    with torch.no_grad():
-        for ims, labs in loaders['train']:
-                with autocast():
-                    out = model(ims)
-                    lss = loss_fn_no_reduction(out, labs)
-                    loss_arr.extend(lss.cpu().numpy())
-                    
-    
-    model.evalution_mode=False
-
-    # Plot the fifth subplot
-    plt.subplot(1, 3, 1)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
-    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
-    plt.xlabel('Variance')
-    plt.ylabel('Loss')
-    if p.train.dataset=='mnist':
-        plt.title('Train - MNIST')
-    elif p.train.dataset=='rm_mnist' or p.train.dataset=='rm_fashionmnist':
-        plt.title(f'ID: {p.train.dataset}')
-
-    model.remove_hooks()
-    model.clear_output()
-    model.register_hooks() # Register the forward hooks again
-    model.evalution_mode=True
-    loss_arr = []
-
-    ood_loader = get_sparse_fashionmnist_dataloaders(p)
-
-    with torch.no_grad():
-        for ims, labs in ood_loader['test']:
-                with autocast():
-                    out = model(ims)
-                    lss = loss_fn_no_reduction(out, labs)
-                    loss_arr.extend(lss.cpu().numpy())
-    
-    model.evalution_mode=False
-
-    # Plot the sixth subplot
-    plt.subplot(1, 3, 3)
-    color = np.linspace(0, 1, len(model.fc3_output))
-    layer_output = np.array(model.fc3_output)
-    plt.scatter(layer_output[:,1], loss_arr, c='black', alpha=0.6)
-    plt.xlabel('Variance')
-    plt.ylabel('Loss')
-    plt.title('Test - FashionMNIST')
-
-    # Adjust layout for better spacing
-    plt.tight_layout()
-
-    # Don't forget to unregister the hook after using it
-    model.remove_hooks()
-
-    if p.exp.save_results:
-        plt.savefig('loss_var_scatter_plot.pdf')
-    
+        #recon_var_plot(model)
+        ood_scatter_plot(p, loaders, model)
 
     # Print best test and training accuracy
     print("Best train accuracy: {:.2f}".format(max(results["train_accs"])))
     print("Best test accuracy: {:.2f}".format(max(results["test_accs"])))
+
+    
 
     
 

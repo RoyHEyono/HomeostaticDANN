@@ -142,7 +142,8 @@ class LocalLossMean(nn.Module):
 
             mean = torch.mean(inputs, dim=(1,2,3), keepdim=True)
             #std = torch.std(inputs, dim=(1,2,3), unbiased=False, keepdim=True)
-            mean_squared = torch.mean(torch.square(inputs), dim=(1,2,3), keepdim=True)
+            mean_squared = torch.var(inputs, dim=(1,2,3), unbiased=False, keepdim=True)
+            #mean_squared = torch.mean(torch.square(inputs), dim=(1,2,3), keepdim=True)
 
             # Define the target values (zero mean and unit standard deviation)
             target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
@@ -222,62 +223,31 @@ class EiConvLayer(nn.Module):
         (and also padding etc, but not checking for that atm)
         """
         assert torch.all(self.Wix >= 0)
-        #assert self.e_conv.weight.shape[1:] == self.i_conv.weight.shape[1:] 
         e_shape = self.Wex.shape
         Wex = self.Wex.flatten(start_dim=1)
         Wix = self.Wix.flatten(start_dim=1)
         
         weight = torch.reshape(Wex - torch.matmul(self.Wei, Wix),e_shape)
 
-        # inh_weight = torch.reshape(torch.matmul(self.Wei, Wix), e_shape)
-
-        # exc_conv2d = F.conv2d(x, self.Wex, self.bias, self.stride, 
-                       # self.padding, self.dilation, self.groups)
-        # inh_conv2d = F.conv2d(x, inh_weight, self.bias, self.stride, 
-                        # self.padding, self.dilation, self.groups)
-
-        # conv2d_unnormalized = exc_conv2d - self.swish_fn(inh_conv2d)
-
         conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         
-        if self.p is not None and self.norm_layer is not None and self.training:
-            if self.p.model.homeostasis:
+        if self.p.model.homeostasis and self.training:
+            # Compute the error difference between the normalized and unnormalized conv2d
+            local_loss = self.loss_fn(conv2d_unnormalized, lambda_mu=self.p.opt.lambda_homeo, lambda_var=self.p.opt.lambda_var)
 
-                # for mini_epoch in range(10):
-                # conv2d_normalized = self.norm_layer(conv2d_unnormalized)
-                
-                # Lagrange multiplier step, TODO: Create flag here to turn on/off
-                # self.local_loss_multiplier += self.multiplier_lr*self.loss_fn(conv2d_unnormalized, conv2d_normalized).item()
+            # Set the local loss value to the computed loss
+            self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
 
-                # Compute the error difference between the normalized and unnormalized conv2d
-                local_loss = self.loss_fn(conv2d_unnormalized, lambda_mu=self.p.opt.lambda_homeo, lambda_var=self.p.opt.lambda_var)
-
-                # Set the local loss value to the computed loss
-                self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
-
-                # print(f"Local Loss: {self.local_loss_value}")
-
-                # Multiply local loss by the multiplier
-                # local_loss*= self.local_loss_multiplier
-
-                # Compute gradients for specific parameters
-                for name, param in self.named_parameters():
-                    if param.requires_grad:
-                        if 'Wei' in name or 'Wix' in name:
-                            param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
-                    
-
-        # if self.p.model.homeostasis and not self.training:
-        #      conv2d_normalized = self.norm_layer(conv2d_unnormalized)
-        #      local_loss = self.local_loss_multiplier * self.loss_fn(conv2d_unnormalized, conv2d_normalized)
-        #      # print(f"Local Loss Value: {local_loss.item()}")
+            # Compute gradients for specific parameters
+            for name, param in self.named_parameters():
+                if param.requires_grad:
+                    if 'Wei' in name or 'Wix' in name:
+                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
 
         if not self.p.model.homeostasis and self.norm_layer is not None:
             # Normalize if not homeostasis but norm is specified
             return self.norm_layer(conv2d_unnormalized)
-
-
-
+        
         return conv2d_unnormalized
 
     def forward_old(self, x):

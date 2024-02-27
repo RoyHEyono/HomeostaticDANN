@@ -76,20 +76,21 @@ Section('model', 'Model Parameters').params(
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='SGD'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=0.000001),
-    momentum=Param(float,'momentum factor', default=0.9),
-    lr=Param(float, 'lr and Wex if dann', default=0.1),
+    wd=Param(float,'weight decay lambda', default=0.001), #0.001 # Weight decay is very bad for inhibition
+    momentum=Param(float,'momentum factor', default=0.5), #0.5 # We need a seperate momentum for the inhib component as well
+    inhib_momentum=Param(float,'inhib momentum factor', default=0),
+    lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(bool,' ', default=True),
     use_sep_bias_gain_lrs=Param(bool,' ', default=False),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1e-1),
-    lambda_var=Param(float, 'lambda homeostasis', default=1e-1),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1),
+    lambda_var=Param(float, 'lambda homeostasis', default=1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
-    wei=Param(float,'lr for Wei if dann', default=0.0001),
-    wix=Param(float,'lr for Wix if dann', default=0.001),
+    wei=Param(float,'lr for Wei if dann', default=0.5), # 0.001
+    wix=Param(float,'lr for Wix if dann', default=0.5), # 0.1
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(
@@ -118,7 +119,7 @@ def get_optimizer(p, model):
     for k, group in params_groups.items():
         d = {"params":group, "name":k}
         
-        if k in ["wix_params", "wei_params",'wex_params']: 
+        if k in ['wex_params', 'wix_params', 'wei_params']: # I've removed the clamping from these: "wix_params", "wei_params"
             d["positive_only"] = True
         else: 
             d["positive_only"] = False
@@ -140,7 +141,7 @@ def get_optimizer(p, model):
     if p.opt.algorithm.lower() == "sgd":
         opt = SGD(parameters, lr = p.opt.lr,
                    weight_decay=p.opt.wd,
-                   momentum=p.opt.momentum) #,exponentiated_grad=p.opt.exponentiated) 
+                   momentum=p.opt.momentum, inhib_momentum=p.opt.inhib_momentum) #,exponentiated_grad=p.opt.exponentiated)  
         opt.nesterov = p.opt.nesterov
         # opt.eg_normalise = p.opt.eg_normalise
         return opt
@@ -182,11 +183,13 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
                     if 'Wix' in name or 'Wei' in name:
                         continue
                     
+                    # if 'Wex' in name:
+                    #     param.grad = None # This locks in the homeostatic loss only
+                    #     continue
                     
                     param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                     
-                    # if 'Wex' in name:
-                    #     param.grad = None # This locks in the homeostatic loss only
+                    
         else:
             scaler.scale(loss).backward()
                     
@@ -282,7 +285,8 @@ def train_model(p):
     return results 
 
 def build_model(p):
-    model = resnets.resnet9_kakaobrain(p)
+    #model = resnets.resnet9_kakaobrain(p)
+    model = resnets.Resnet9DANN(p)
     return model
 
 def convert_to_dict(obj):
@@ -328,6 +332,7 @@ if __name__ == "__main__":
 
     loaders = get_dataloaders(p)
     model = build_model(p).cuda()
+    model.register_hooks() # Register the forward hooks
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     EPOCHS = p.train.epochs
     opt = get_optimizer(p, model)
@@ -366,7 +371,101 @@ if __name__ == "__main__":
     print("Best test accuracy: {:.2f}".format(max(results["test_accs"])))
 
     if p.exp.save_results:
-        pass
+        # Create a 1x3 subplot layout
+        plt.figure(figsize=(15, 5))  # Adjust the figure size as needed
+
+        # Plot the first subplot
+        plt.subplot(1, 3, 1)
+        # Plot the mean line
+        layer_output = np.array(model.conv1_output)
+        mu_mu = layer_output[:,0]
+        mu_std = layer_output[:,1]
+        x = range(len(mu_mu))
+        plt.plot(x, mu_mu, label='Mean Line')
+        plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Mean')
+        plt.title('Conv 1')
+
+        # Plot the second subplot
+        plt.subplot(1, 3, 2)
+        layer_output = np.array(model.conv2_output)
+        mu_mu = layer_output[:,0]
+        mu_std = layer_output[:,1]
+        x = range(len(mu_mu))
+        plt.plot(x, mu_mu, label='Mean Line')
+        plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Mean')
+        plt.title('Conv 2')
+
+        # Plot the third subplot
+        plt.subplot(1, 3, 3)
+        layer_output = np.array(model.conv4_output)
+        mu_mu = layer_output[:,0]
+        mu_std = layer_output[:,1]
+        x = range(len(mu_mu))
+        plt.plot(x, mu_mu, label='Mean Line')
+        plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Mean')
+        plt.title('Conv 4')
+
+        plt.savefig('mean_line_training.pdf')
+
+        
+        # Line plot here
+
+        # Create a 1x3 subplot layout
+        plt.figure(figsize=(15, 5))  # Adjust the figure size as needed
+
+        # Plot the first subplot
+        plt.subplot(1, 3, 1)
+        # Plot the mean line
+        layer_output = np.array(model.conv1_output)
+        var_mu = layer_output[:,2]
+        var_std = layer_output[:,3]
+        x = range(len(var_mu))
+        plt.plot(x, var_mu, label='Mean Line')
+        plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
+        plt.yscale('log')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Variance')
+        plt.title('Conv 1')
+
+        # Plot the second subplot
+        plt.subplot(1, 3, 2)
+        layer_output = np.array(model.conv2_output)
+        var_mu = layer_output[:,2]
+        var_std = layer_output[:,3]
+        x = range(len(var_mu))
+        plt.plot(x, var_mu, label='Mean Line')
+        plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
+        plt.yscale('log')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Variance')
+        plt.title('Conv 2')
+
+        # Plot the third subplot
+        plt.subplot(1, 3, 3)
+        layer_output = np.array(model.conv4_output)
+        var_mu = layer_output[:,2]
+        var_std = layer_output[:,3]
+        x = range(len(var_mu))
+        plt.plot(x, var_mu, label='Mean Line')
+        plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
+        plt.yscale('log')
+        # Add labels and title
+        plt.xlabel('Steps')
+        plt.ylabel('Variance')
+        plt.title('Conv 4')
+
+        plt.savefig('var_line_training.pdf')
 
     if p.exp.save_model:
         # Create unique model name given params that includes normalization type

@@ -130,3 +130,93 @@ def resnet9_kakaobrain(p:dict, linear_decoder=False):
     modules.append(Mul(0.2))
     model = Sequential(modules).to(memory_format=torch.channels_last).cuda()
     return model
+
+
+def ConvLayerEI(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
+    if p.model.is_dann == True:
+        conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
+                            stride=stride,padding=padding, groups=groups, bias=False, p=p)
+    else:
+        conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
+                           padding=padding, groups=groups, bias=False)
+
+    return conv2d
+class Resnet9DANN(nn.Module):
+    def __init__(self, p):
+        super(Resnet9DANN, self).__init__()
+
+        num_class=10
+
+        self.conv1 = ConvLayerEI(p, 3, 64, kernel_size=3, stride=1, padding=1)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = ConvLayerEI(p, 64, 128, kernel_size=5, stride=2, padding=2)
+        self.conv3_1 = ConvLayerEI(p, 128, 128)
+        self.conv3_2 = ConvLayerEI(p, 128, 128)
+        self.conv4 = ConvLayerEI(p, 128, 256, kernel_size=3, stride=1, padding=1)
+        self.maxpool = nn.MaxPool2d(2)
+        self.conv5_1 = ConvLayerEI(p, 256, 256)
+        self.conv5_2 = ConvLayerEI(p, 256, 256)
+        self.conv6 = ConvLayerEI(p, 256, 128, kernel_size=3, stride=1, padding=0)
+        self.adptmaxpool = nn.AdaptiveMaxPool2d((1, 1))
+        self.flatten = Flatten()
+        ni = max(1,int(num_class*0.1))
+        self.fc1 = EiDenseLayer(128, num_class, ni=ni, split_bias=False, # true is EG
+                                     use_bias=True)
+        self.conv1_output = []
+        self.conv2_output = []
+        self.conv4_output = []
+        self.conv6_output = []
+        self.evalution_mode = False
+    
+    def list_forward_hook(self, output_list):
+        def forward_hook(layer, input, output):
+            if self.training:
+                # get mean and variance of the output on axis 1 and append to output list
+                mu = torch.mean(output, dim=(1,2,3), keepdim=True)
+                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True)
+                output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item()])
+            elif self.evalution_mode:
+                # get mean and variance of the output on axis 1 and append to output list
+                mu = torch.mean(output, dim=(1,2,3), keepdim=True).cpu().detach().numpy()
+                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True).cpu().detach().numpy()
+                # zip the mean and variance together
+                zipped_list = list(zip(mu, var))
+                output_list.extend(zipped_list)
+
+            
+        return forward_hook
+
+    def register_hooks(self):
+        self.conv1_hook = self.conv1.register_forward_hook(self.list_forward_hook(self.conv1_output))
+        self.conv2_hook = self.conv2.register_forward_hook(self.list_forward_hook(self.conv2_output))
+        self.conv4_hook = self.conv4.register_forward_hook(self.list_forward_hook(self.conv4_output))
+        self.conv6_hook = self.conv6.register_forward_hook(self.list_forward_hook(self.conv6_output))
+
+
+    def remove_hooks(self):
+        self.conv1_hook.remove()
+        self.conv2_hook.remove()
+        self.conv4_hook.remove()
+        self.conv6_hook.remove()
+
+    # clear all the output lists
+    def clear_output(self):
+        self.conv1_output = []
+        self.conv2_output = []
+        self.conv4_output = []
+        self.conv6_output = []
+    
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.relu(x)
+        x = x + self.relu(self.conv3_2(self.relu(self.conv3_1(x))))
+        x = self.conv4(x)
+        x = self.maxpool(x)
+        x = x + self.relu(self.conv5_2(self.relu(self.conv5_1(x))))
+        x = self.conv6(x)
+        x = self.adptmaxpool(x)
+        x = self.flatten(x)
+        x = self.fc1(x)
+        return x

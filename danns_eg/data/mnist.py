@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader, Dataset
 import danns_eg.utils as train_utils
 import struct
 from sklearn.model_selection import train_test_split
+from PIL import Image
+from torchvision import transforms as trnsfrm
 # from config import DATASETS_DIR
 # import train_utils
 
@@ -28,11 +30,14 @@ class SparseMnistDataset(Dataset):
         """
         n is the number of distractors, so n=0 is normal mnist 
         """
-        if transforms is not None: raise # not implemented! 
+        # if transforms is not None: raise # not implemented!
+         
         super().__init__()
 
         self.remove_digit = remove_digit
         self.x, self.y = torch.load(path)
+
+        self.transforms = transforms
 
         
         if self.remove_digit is not None:
@@ -58,17 +63,30 @@ class SparseMnistDataset(Dataset):
         if self.remove_digit is not None:
             idx = self.indices[idx]
         if self.flatten:
+            img = self.x[idx:idx+self.n+1]
+            
+            if self.transforms:
+                img = self.transforms(img)
+
+
             if self.idx_permute is not None:
-                return self.x[idx:idx+self.n+1].view(-1)[self.idx_permute], self.y[idx]
+                img, label = img.view(-1)[self.idx_permute], self.y[idx]
             else:
-                return self.x[idx:idx+self.n+1].view(-1), self.y[idx]
+                img, label = img.view(-1), self.y[idx]
         else:
             if self.idx_permute is not None:
                 print("Not yet implemented permuation for non flattened data")
                 # e.g. [self.idx_permute].view(1, h, w)
             else:
-                return self.x[idx:idx+self.n+1], self.y[idx]
+                img, label = self.x[idx:idx+self.n+1], self.y[idx]
 
+        
+
+        return img, label
+
+class ToCudaTransform:
+    def __call__(self, x):
+        return x.to('cuda')
 
 class SparseFashionMnistDataset(Dataset):
     """
@@ -191,13 +209,36 @@ def get_sparse_mnist_dataloaders(p, transforms=None, n_mnist_distractors=0):
     return {"train":train_dataloader, "train_eval":train_dataloader_eval, "test":test_dataloader}
 
 
+def get_sparse_kmnist_dataloaders(p, transforms=None, n_kmnist_distractors=0):
+    kmnist_path = "/network/datasets/kmnist.var/kmnist_torchvision/KMNIST/processed"
+    batch_size = p.train.batch_size
+    eval_batch_size = 10000
+    if p.train.use_testset:
+        train_dataset = SparseMnistDataset(f"{kmnist_path}/training.pt", n_kmnist_distractors, transforms=transforms)
+        train_dataset_eval = SparseMnistDataset(f"{kmnist_path}/training.pt", n_kmnist_distractors)
+        test_dataset  = SparseMnistDataset(f"{kmnist_path}/test.pt", n_kmnist_distractors)
+        
+        train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
+        train_dataloader_eval = DataLoader(train_dataset_eval, eval_batch_size, shuffle=True)
+        test_dataloader  = DataLoader(test_dataset, eval_batch_size, shuffle=False)
+    else:
+        val_size = 10000
+        dtrain = SparseMnistDataset(f"{kmnist_path}/training.pt", n_kmnist_distractors,transforms=transforms)
+        deval  = SparseMnistDataset(f"{kmnist_path}/training.pt", n_kmnist_distractors,transforms=None)
+        train_dataloader, train_dataloader_eval, test_dataloader =  get_train_eval_val_dataloaders(
+                                                                    dtrain, deval, val_size, batch_size, 
+                                                                    eval_batch_size)
+
+    return {"train":train_dataloader, "train_eval":train_dataloader_eval, "test":test_dataloader}
+
+
 def get_sparse_remove_one_mnist_dataloaders(p, transforms=None, n_mnist_distractors=0, rm_digits=None):
     mnist_path = "/network/datasets/mnist.var/mnist_torchvision/MNIST/processed"
     batch_size = p.train.batch_size
     if p.train.use_testset:
-        train_dataset = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits, transforms=transforms)
+        train_dataset = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits)
         train_dataset_eval = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits)
-        test_dataset  = SparseMnistDataset(f"{mnist_path}/test.pt", n_mnist_distractors, remove_digit=rm_digits)
+        test_dataset  = SparseMnistDataset(f"{mnist_path}/test.pt", n_mnist_distractors, remove_digit=rm_digits, transforms=transforms)
         held_out_digits_dataset = SparseMnistDataset(f"{mnist_path}/test.pt", n_mnist_distractors, remove_digit=[i for i in range(10) if i not in rm_digits])
         
         train_eval_batch_size = len(train_dataloader_eval)
@@ -211,8 +252,8 @@ def get_sparse_remove_one_mnist_dataloaders(p, transforms=None, n_mnist_distract
     else:
         val_size = 10000
         dtrain = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits, transforms=transforms)
-        deval  = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits, transforms=None)
-        held_out_digits_dataset = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=[i for i in range(10) if i not in rm_digits])
+        deval  = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=rm_digits, transforms=transforms)
+        held_out_digits_dataset = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, remove_digit=[i for i in range(10) if i not in rm_digits], transforms=transforms)
         train_eval_batch_size = len(deval)
         held_out_batch_size = len(held_out_digits_dataset)
         train_dataloader, train_dataloader_eval, test_dataloader =  get_train_eval_val_dataloaders(
