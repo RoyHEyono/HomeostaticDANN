@@ -3,7 +3,7 @@ example run:
 python /home/mila/r/roy.eyono/danns_eg/dense_mnist_task/train.py --opt.lr=0.01 --opt.wd=1e-4 --opt.inhib_momentum=0.9 --opt.momentum=0.5 --opt.inhib_lrs.wei=0.5 --opt.inhib_lrs.wix=1 --train.batch_size=32 --exp.save_results=True --train.dataset=rm_mnist --train.epochs=50
 
 # Homeostatic DANN
-python train.py --opt.lr=0.1 --opt.wd=1e-6 --opt.inhib_momentum=0.9 --opt.momentum=0.5 --opt.inhib_lrs.wei=0.5 --opt.inhib_lrs.wix=1e-4 --train.batch_size=32 --exp.name="homeo_dann"
+python train.py --opt.lr=0.2 --opt.wd=1e-6 --opt.inhib_momentum=0.9 --opt.momentum=0.5 --opt.inhib_lrs.wei=0.5 --opt.inhib_lrs.wix=1e-4 --train.batch_size=32 --exp.name="homeo_dann"
 
 # Vanilla DANN
 python train.py --opt.lr=1 --opt.wd=1e-6 --opt.inhib_momentum=0 --opt.momentum=0.5 --opt.inhib_lrs.wei=1e-4 --opt.inhib_lrs.wix=0.5 --train.batch_size=32 --exp.name="non_homeo_dann"

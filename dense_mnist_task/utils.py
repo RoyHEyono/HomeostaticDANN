@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from danns_eg.data.mnist import get_sparse_fashionmnist_dataloaders, get_sparse_mnist_dataloaders, get_sparse_kmnist_dataloaders
 from torch.cuda.amp import autocast
 import numpy as np
+from danns_eg.data.mnist import SparseMnistDataset
+from torch.utils.data import DataLoader, Dataset
 
 from sklearn.decomposition import PCA
 from sklearn.datasets import fetch_openml
@@ -22,9 +24,9 @@ def load_fashionmnist():
     return fashionmnist.data.to_numpy().astype('float32') / 255.0, fashionmnist.target.to_numpy().astype('int')
 
 
-print("Loading data")
-X, y = load_mnist()
-print("Loaded data")
+# print("Loading data")
+# X, y = load_mnist()
+# print("Loaded data")
 
 
 def comparative_mean_plot(layer_output_1, layer_output_2, label1="Label1", label2="Label2"):
@@ -187,10 +189,9 @@ def var_plot(model, title="var_line_training"):
     plt.savefig(f'{title}.pdf')
 
 
-def img_stat():
+def img_stat(ax):
     X_mnist, _ = load_mnist()
     #X_fashionmnist, _ = load_fashionmnist()
-    fig, ax = plt.subplots()
 
     mu_mnist = []
     var_mnist = []
@@ -206,7 +207,7 @@ def img_stat():
         var_fmnist.append(np.var(mnist_translated))
         
     
-    ax.scatter(mu_fmnist, var_fmnist, c='red', label="MNIST-shift",
+    ax.scatter(mu_fmnist, var_fmnist, c='red', label="MNIST-shifted",
     alpha=0.1)
     ax.scatter(mu_mnist, var_mnist, c='black', label="MNIST",
                alpha=0.1)
@@ -214,7 +215,6 @@ def img_stat():
     ax.set_xlabel('Mean')
     ax.set_ylabel('Var')
 
-    ax.legend()
 
 def populate_layer_stats(model):
     X, y = load_mnist()
@@ -341,17 +341,26 @@ def recon_var_plot(model, plot_mean=True, plot_variance=True):
     plt.savefig('reconstruction_plot.pdf')
 
 
-def disentangled_mean_plot(model, var_pert=False, inhibitory=False):
+def disentangled_mean_plot(model, var_pert=False, inhibitory=False, return_acc=False, max_noise=1):
 
     batch_size=32
     if var_pert:
         components = np.linspace(0.1, 5, 20)
     else:
-        components = np.linspace(0, 1, 20)
+        components = np.linspace(0, max_noise, 20)
 
     vars = np.zeros(len(components))
     mus = np.zeros(len(components))
-    acc = []
+    if return_acc: acc = []
+
+    dta = get_mnist_dataloaders()['train']
+    images = []
+    for batch_idx, (data, _) in enumerate(dta):
+        images.extend(data)
+        if len(images) >= 32:
+            break
+    images = torch.stack(images)
+    
     for idx, mu in enumerate(components):
         # Additive Gaussian noise with mean=0 and std=0.1
         if var_pert:
@@ -362,14 +371,10 @@ def disentangled_mean_plot(model, var_pert=False, inhibitory=False):
     
         for img_idx in range(batch_size):
 
-            reconstructed_image = X[img_idx] + noise
+            img = images[img_idx] + torch.Tensor(noise).cuda()
 
             model.clear_output()
             model.register_hooks()
-
-
-            #convert to torch
-            img = torch.Tensor(reconstructed_image).unsqueeze(0).cuda()
 
             with autocast():
                 model(img)
@@ -385,28 +390,45 @@ def disentangled_mean_plot(model, var_pert=False, inhibitory=False):
             model.remove_hooks()
             model.clear_output()
 
-        acc.append(model_eval(model, noise=noise))
+        if return_acc: acc.append(eval_model(model, noise=noise))
         
     vars=vars/batch_size
     mus=mus/batch_size
 
-    return components, mus, vars, acc
+    if return_acc: return components, mus, vars, acc
 
-def model_eval(model, noise=None, batch_size=512):
+    return components, mus, vars
 
-    if noise is not None:
-        image_batch = X[:batch_size] + noise
-    else:
-        image_batch = X[:batch_size]
-    labs = y[:batch_size]
-    images = torch.Tensor(image_batch).unsqueeze(0).cuda()
-    labs = torch.Tensor(labs)
 
-    with autocast():
-        out = model(images)
-        correct = out.argmax(-1).eq(labs.cuda()).sum().cpu().item()
+def get_mnist_dataloaders(transforms=None, n_mnist_distractors=0, batch_size=32):
+    mnist_path = "/network/datasets/mnist.var/mnist_torchvision/MNIST/processed"
+    eval_batch_size = 10000
+    train_dataset = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors, transforms=transforms)
+    train_dataset_eval = SparseMnistDataset(f"{mnist_path}/training.pt", n_mnist_distractors)
+    test_dataset  = SparseMnistDataset(f"{mnist_path}/test.pt", n_mnist_distractors)
+    
+    train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
+    train_dataloader_eval = DataLoader(train_dataset_eval, eval_batch_size, shuffle=True)
+    test_dataloader  = DataLoader(test_dataset, eval_batch_size, shuffle=False)
 
-    return correct/batch_size
+    return {"train":train_dataloader, "train_eval":train_dataloader_eval, "test":test_dataloader}
+
+def eval_model(model, loaders=get_mnist_dataloaders(), noise=None):
+    train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
+    for idx, (ims, labs) in enumerate(loaders['train']):
+        with autocast():
+            if noise is not None:
+                image_transform = ims + torch.Tensor(noise).cuda()
+            else:
+                image_transform = ims
+            out = model(image_transform)
+            train_correct += out.argmax(1).eq(labs).sum().cpu().item()
+            n_train += ims.shape[0]
+        if idx == 300:
+            break
+    train_acc = train_correct / n_train * 100
+
+    return train_acc
 
     
 

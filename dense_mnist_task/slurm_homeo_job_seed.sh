@@ -56,4 +56,4 @@ momentum=${momentum_arr[$idx5]}
 # pidx=$((SLURM_ARRAY_TASK_ID/lenL))
 echo $idx1,$idx2,$idx3,$idx4,$idx5
 echo $lr,$lr_wei,$lr_wix,$momentum_inhib,$momentum
-python train.py --opt.lr=0.01 --opt.wd=1e-6 --opt.inhib_momentum=$momentum_inhib --opt.momentum=$momentum --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --train.seed=$lr --train.batch_size=$batch_size --exp.wandb_project=Homeo-DANN --exp.wandb_entity=project_danns --exp.use_wandb=True
+python train.py --opt.lr=0.1 --opt.wd=1e-7 --opt.inhib_momentum=$momentum_inhib --opt.momentum=$momentum --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --train.seed=$lr --train.batch_size=$batch_size --exp.wandb_project=Homeo-DANN --exp.wandb_entity=project_danns --exp.use_wandb=True
