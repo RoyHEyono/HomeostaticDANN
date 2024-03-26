@@ -1,10 +1,10 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="danns_eg",
+    name="Homeostatic DANN",
     packages=find_packages(),
     version='0.1.0',
-    description='DANNs EG',
-    author='Jonathan Cornford, Arna Ghosh',
+    description='Balanced Excitation-Inhibition Artificial Neural Networks',
+    author='Roy Henha Eyono',
     license='MIT'
 )
