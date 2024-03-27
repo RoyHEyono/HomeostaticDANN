@@ -389,32 +389,6 @@ if __name__ == "__main__":
         plt.ylabel('Mean')
         plt.title('Conv 1')
 
-        # Plot the second subplot
-        plt.subplot(1, 3, 2)
-        layer_output = np.array(model.conv2_output)
-        mu_mu = layer_output[:,0]
-        mu_std = layer_output[:,1]
-        x = range(len(mu_mu))
-        plt.plot(x, mu_mu, label='Mean Line')
-        plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
-        # Add labels and title
-        plt.xlabel('Steps')
-        plt.ylabel('Mean')
-        plt.title('Conv 2')
-
-        # Plot the third subplot
-        plt.subplot(1, 3, 3)
-        layer_output = np.array(model.conv4_output)
-        mu_mu = layer_output[:,0]
-        mu_std = layer_output[:,1]
-        x = range(len(mu_mu))
-        plt.plot(x, mu_mu, label='Mean Line')
-        plt.fill_between(x, mu_mu - mu_std, mu_mu + mu_std, alpha=0.2, label='Standard Deviation')
-        # Add labels and title
-        plt.xlabel('Steps')
-        plt.ylabel('Mean')
-        plt.title('Conv 4')
-
         plt.savefig('mean_line_training.pdf')
 
         
@@ -437,34 +411,6 @@ if __name__ == "__main__":
         plt.xlabel('Steps')
         plt.ylabel('Variance')
         plt.title('Conv 1')
-
-        # Plot the second subplot
-        plt.subplot(1, 3, 2)
-        layer_output = np.array(model.conv2_output)
-        var_mu = layer_output[:,2]
-        var_std = layer_output[:,3]
-        x = range(len(var_mu))
-        plt.plot(x, var_mu, label='Mean Line')
-        plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
-        plt.yscale('log')
-        # Add labels and title
-        plt.xlabel('Steps')
-        plt.ylabel('Variance')
-        plt.title('Conv 2')
-
-        # Plot the third subplot
-        plt.subplot(1, 3, 3)
-        layer_output = np.array(model.conv4_output)
-        var_mu = layer_output[:,2]
-        var_std = layer_output[:,3]
-        x = range(len(var_mu))
-        plt.plot(x, var_mu, label='Mean Line')
-        plt.fill_between(x, var_mu - var_std, var_mu + var_std, alpha=0.2, label='Standard Deviation')
-        plt.yscale('log')
-        # Add labels and title
-        plt.xlabel('Steps')
-        plt.ylabel('Variance')
-        plt.title('Conv 4')
 
         plt.savefig('var_line_training.pdf')
 

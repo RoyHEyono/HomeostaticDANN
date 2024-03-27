@@ -160,15 +160,20 @@ class ConvDANN(nn.Module):
     
     def list_forward_hook(self, output_list):
         def forward_hook(layer, input, output):
+
             if self.training:
                 # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, dim=(1,2,3), keepdim=True)
-                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True)
+                mu = torch.mean(output, dim=(2,3), keepdim=True) # Compute first moment for each filter
+                mu = torch.mean(mu, dim=1, keepdim=True) # Average first moment across all filters (TODO: This might not be the best thing to do)
+                var = torch.mean(torch.square(output), dim=(2,3), keepdim=True) # Compute second moment for each filter
+                var = torch.mean(var, dim=1, keepdim=True) # Average second moment across all filters (TODO: This might not be the best thing to do)
                 output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item()])
             elif self.evalution_mode:
                 # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, dim=(1,2,3), keepdim=True).cpu().detach().numpy()
-                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True).cpu().detach().numpy()
+                mu = torch.mean(output, dim=(2,3), keepdim=True) # Compute first moment for each filter
+                mu = torch.mean(mu, dim=1, keepdim=True).cpu().detach().numpy() # Average first moment across all filters (TODO: This might not be the best thing to do)
+                var = torch.mean(torch.square(output), dim=(2,3), keepdim=True) # Compute second moment for each filter
+                var = torch.mean(var, dim=1, keepdim=True).cpu().detach().numpy() # Average second moment across all filters (TODO: This might not be the best thing to do)
                 # zip the mean and variance together
                 zipped_list = list(zip(mu, var))
                 output_list.extend(zipped_list)

@@ -140,21 +140,19 @@ class LocalLossMean(nn.Module):
 
         def forward(self, inputs, targets=None, lambda_mu=1, lambda_var=1):
 
-            mean = torch.mean(inputs, dim=(1,2,3), keepdim=True)
-            #std = torch.std(inputs, dim=(1,2,3), unbiased=False, keepdim=True)
-            mean_squared = torch.var(inputs, dim=(1,2,3), unbiased=False, keepdim=True)
-            #mean_squared = torch.mean(torch.square(inputs), dim=(1,2,3), keepdim=True)
+            mean = torch.mean(inputs, dim=(2,3), keepdim=True) # Compute first moment for each filter
+            mean = torch.mean(mean, dim=1, keepdim=True) # Average first moment across all filters (TODO: This might not be the best thing to do)
+            mean_squared = torch.mean(torch.square(inputs), dim=(2,3), keepdim=True) # Compute second moment for each filter
+            mean_squared = torch.mean(mean_squared, dim=1, keepdim=True) # Average second moment across all filters (TODO: This might not be the best thing to do)
 
             # Define the target values (zero mean and unit standard deviation)
             target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
-            #target_var = torch.ones(std.shape, dtype=inputs.dtype, device=inputs.device)
             target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
 
             criterion = nn.MSELoss()
 
             # Calculate the loss based on the L2 distance from the target values
             loss = lambda_mu * torch.sqrt(criterion(mean, target_mean))  + lambda_var * torch.sqrt(criterion(mean_squared, target_mean_squared))
-            #loss = (lambda_mu * (mean - target_mean) ** 2) + (lambda_var * (std - target_var) ** 2)
             
             return loss.mean()
 
