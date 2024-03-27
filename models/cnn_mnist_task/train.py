@@ -286,7 +286,8 @@ def train_model(p):
 
 def build_model(p):
     #model = resnets.resnet9_kakaobrain(p)
-    model = resnets.Resnet9DANN(p)
+    #model = resnets.Resnet9DANN(p)
+    model = resnets.ConvDANN(p)
     return model
 
 def convert_to_dict(obj):
