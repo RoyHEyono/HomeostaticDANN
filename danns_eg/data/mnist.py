@@ -11,7 +11,7 @@ import danns_eg.utils as train_utils
 import struct
 from sklearn.model_selection import train_test_split
 from PIL import Image
-from torchvision import transforms as trnsfrm
+from torchvision import transforms as transform
 # from config import DATASETS_DIR
 # import train_utils
 
@@ -88,6 +88,34 @@ class ToCudaTransform:
     def __call__(self, x):
         return x.to('cuda')
 
+class ToNumpy:
+    def __call__(self, pic):
+        return np.array(pic)
+
+# Define custom contrast stretching function
+def contrast_stretching(img, min_percentile=0, max_percentile=100):
+    #min_val = np.percentile(img.numpy(), min_percentile, axis=None)
+    min_val = min_percentile.item()
+    #max_val = np.percentile(img.cpu().numpy(), max_percentile, axis=None)
+    max_val = 255 # NOTE: Might not be the case
+    stretched_img = torch.clamp((img - min_val) * (255.0 / (max_val - min_val)), 0, 255).to(torch.uint8)
+    return stretched_img
+
+class ContrastStretching(object):
+    def __init__(self, min_percentile=0, max_percentile=100):
+        self.min_percentile = min_percentile
+        self.max_percentile = max_percentile
+
+    def __call__(self, img):
+        # Convert torch tensor to numpy array
+        img_np = img
+
+        sample_min = torch.rand(1) * self.min_percentile
+
+        stretched_img = contrast_stretching(img_np, sample_min, self.max_percentile)
+
+        return stretched_img
+
 class SparseFashionMnistDataset(Dataset):
     """
     https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
@@ -103,8 +131,10 @@ class SparseFashionMnistDataset(Dataset):
         """
         n is the number of distractors, so n=0 is normal mnist 
         """
-        if transforms is not None: raise # not implemented! 
+        # if transforms is not None: raise # not implemented! 
         super().__init__()
+
+        self.transforms = transforms
 
         self.remove_digit = remove_digit
         self.x, self.y = path
@@ -112,14 +142,19 @@ class SparseFashionMnistDataset(Dataset):
         if self.remove_digit is not None:
             self.indices = [i for i, (img, label) in enumerate(zip(self.x, self.y)) if label.argmax(0).item() not in self.remove_digit]
         
-        self.x = self.x.float().div(255)
-        self.n_classes = len(self.y.unique())
-        self.n = n # no of distracting
-        self.flatten=flatten_bool
+        if transforms is None:
+            self.x = self.x.float().div(255)
+        else:
+            self.x = self.transforms(self.x)
+
         if to_device:
             device = train_utils.get_device()
             self.x = self.x.to(device)
             self.y = self.y.to(device)
+        self.n_classes = len(self.y.unique())
+        self.n = n # no of distracting
+        self.flatten=flatten_bool
+        
 
         self.idx_permute = None
 
@@ -132,16 +167,22 @@ class SparseFashionMnistDataset(Dataset):
         if self.remove_digit is not None:
             idx = self.indices[idx]
         if self.flatten:
+            img = self.x[idx:idx+self.n+1]
+
+            
+            
             if self.idx_permute is not None:
-                return self.x[idx:idx+self.n+1].view(-1)[self.idx_permute], self.y[idx].argmax(0)
+                return img.view(-1)[self.idx_permute], self.y[idx].argmax(0)
             else:
-                return self.x[idx:idx+self.n+1].view(-1), self.y[idx].argmax(0)
+                return img.view(-1), self.y[idx].argmax(0)
         else:
             if self.idx_permute is not None:
                 print("Not yet implemented permuation for non flattened data")
                 # e.g. [self.idx_permute].view(1, h, w)
             else:
-                return self.x[idx:idx+self.n+1], self.y[idx].argmax(0)
+                img = self.x[idx:idx+self.n+1]
+
+                return img, self.y[idx].argmax(0)
 
 def get_train_eval_val_dataloaders(training_dataset, dataset, val_size, batch_size, val_batch_size=None,
                                    num_workers=0, pin_memory=False):
@@ -293,6 +334,13 @@ def get_sparse_fashionmnist_dataloaders(p, transforms=None, n_mnist_distractors=
     train_label_path = "train-labels-idx1-ubyte"
     test_image_path = "t10k-images-idx3-ubyte"
     test_label_path = "t10k-labels-idx1-ubyte"
+    
+    # Contrast transform
+    contrast_transform = transform.Compose([
+                            ContrastStretching(min_percentile=0, max_percentile=100),
+                            transform.Lambda(lambda x: x / 255.0),  # Divide by 255
+                            ToCudaTransform()
+                        ])
 
     train_img = read_idx_file(f'{fashionmnist_path}/{train_image_path}')
     train_lbl = read_idx_file(f'{fashionmnist_path}/{train_label_path}')
@@ -306,17 +354,17 @@ def get_sparse_fashionmnist_dataloaders(p, transforms=None, n_mnist_distractors=
     eval_batch_size = 10000
 
     if p.train.use_testset:
-        train_dataset = SparseFashionMnistDataset(training_data, n_mnist_distractors, transforms=transforms)
-        train_dataset_eval = SparseFashionMnistDataset(training_data, n_mnist_distractors)
-        test_dataset  = SparseFashionMnistDataset(testing_data, n_mnist_distractors)
+        train_dataset = SparseFashionMnistDataset(training_data, n_mnist_distractors, transforms=contrast_transform)
+        train_dataset_eval = SparseFashionMnistDataset(training_data, n_mnist_distractors, transforms=contrast_transform)
+        test_dataset  = SparseFashionMnistDataset(testing_data, n_mnist_distractors, transforms=contrast_transform)
         
         train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True)
         train_dataloader_eval = DataLoader(train_dataset_eval, eval_batch_size, shuffle=True)
         test_dataloader  = DataLoader(test_dataset, eval_batch_size, shuffle=False)
     else:
         val_size = 10000
-        dtrain = SparseFashionMnistDataset(training_data, n_mnist_distractors,transforms=transforms)
-        deval  = SparseFashionMnistDataset(training_data, n_mnist_distractors,transforms=None)
+        dtrain = SparseFashionMnistDataset(training_data, n_mnist_distractors,transforms=contrast_transform)
+        deval  = SparseFashionMnistDataset(training_data, n_mnist_distractors,transforms=contrast_transform)
         train_dataloader, train_dataloader_eval, test_dataloader =  get_train_eval_val_dataloaders(
                                                                     dtrain, deval, val_size, batch_size, 
                                                                     eval_batch_size)

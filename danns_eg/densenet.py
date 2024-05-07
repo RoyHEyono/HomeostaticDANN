@@ -9,7 +9,7 @@ from danns_eg.normalization import CustomGroupNorm
 
 
 class DenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, homeostasis=True):
+    def __init__(self, input_size, hidden_size, output_size, homeostasis=True, nonlinearity=None):
         super(DenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         print(f"Homeostasis is {homeostasis}")
@@ -29,6 +29,8 @@ class DenseDANN(nn.Module):
         self.fc5 = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, # true is EG
                                      use_bias=True)
         self.evaluation_mode = False
+        
+        self.nonlinearity = nn.LayerNorm(hidden_size) if nonlinearity=='ln_true' else None
 
         
 
@@ -90,6 +92,8 @@ class DenseDANN(nn.Module):
     
     def forward(self, x):
         x = self.fc1(x)
+        if self.nonlinearity is not None:
+            x = self.nonlinearity(x)
         x = self.relu(x)
         # x = self.fc2(x)
         # x = self.relu(x)
@@ -111,7 +115,10 @@ def net(p:dict):
     modules = []
     
     if p.model.is_dann:
-        model = DenseDANN(input_dim, width, num_class, homeostasis=p.model.homeostasis)
+        if p.model.homeostasis:
+            model = DenseDANN(input_dim, width, num_class, homeostasis=p.model.homeostasis, nonlinearity=None)
+        else:
+            model = DenseDANN(input_dim, width, num_class, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
         return model
         
     

@@ -14,6 +14,7 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayer
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
+from danns_eg.dense import EiDenseLayerHomeostatic
 
 class Mul(nn.Module):
     def __init__(self, weight):
@@ -132,10 +133,10 @@ def resnet9_kakaobrain(p:dict, linear_decoder=False):
     return model
 
 
-def ConvLayerEI(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1):
+def ConvLayerEI(p, c_in, c_out, kernel_size=3, stride=1, padding=1, groups=1, homeostasis=False):
     if p.model.is_dann == True:
         conv2d = EiConvLayer(c_in, c_out, int(c_out*0.1),kernel_size,kernel_size,
-                            stride=stride,padding=padding, groups=groups, bias=False, p=p)
+                            stride=stride,padding=padding, groups=groups, homeostasis=homeostasis, bias=False, p=p)
     else:
         conv2d = ConvLayer(c_in, c_out, kernel_size=kernel_size,stride=stride,
                            padding=padding, groups=groups, bias=False)
@@ -191,6 +192,15 @@ class ConvDANN(nn.Module):
     # clear all the output lists
     def clear_output(self):
         self.conv1_output = []
+
+    def get_local_loss(self):
+        # add all the losses
+        if self.conv1.local_loss_value is None:
+            return None
+        total_loss = self.conv1.local_loss_value #+ self.fc2.local_loss_value \
+                    #
+        #total_loss = total_loss / 4
+        return total_loss
     
     def forward(self, x):
         x = self.conv1(x)
@@ -208,9 +218,9 @@ class Resnet9DANN(nn.Module):
 
         num_class=10
 
-        self.conv1 = ConvLayerEI(p, 3, 64, kernel_size=3, stride=1, padding=1)
+        self.conv1 = ConvLayerEI(p, 3, 2, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = ConvLayerEI(p, 64, 128, kernel_size=5, stride=2, padding=2)
+        self.conv2 = ConvLayerEI(p, 2, 128, kernel_size=5, stride=2, padding=2, homeostasis=p.model.homeostasis)
         self.conv3_1 = ConvLayerEI(p, 128, 128)
         self.conv3_2 = ConvLayerEI(p, 128, 128)
         self.conv4 = ConvLayerEI(p, 128, 256, kernel_size=3, stride=1, padding=1)
@@ -221,25 +231,27 @@ class Resnet9DANN(nn.Module):
         self.adptmaxpool = nn.AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
         ni = max(1,int(num_class*0.1))
-        self.fc1 = EiDenseLayer(128, num_class, ni=ni, split_bias=False, # true is EG
+        self.fc1 = EiDenseLayerHomeostatic(128, num_class, ni=ni, split_bias=False, # true is EG
                                      use_bias=True)
         self.conv1_output = []
-        self.conv2_output = []
-        self.conv4_output = []
-        self.conv6_output = []
         self.evalution_mode = False
     
     def list_forward_hook(self, output_list):
         def forward_hook(layer, input, output):
+
             if self.training:
                 # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, dim=(1,2,3), keepdim=True)
-                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True)
+                mu = torch.mean(output, dim=(2,3), keepdim=True) # Compute first moment for each filter
+                mu = torch.mean(mu, dim=1, keepdim=True) # Average first moment across all filters (TODO: This might not be the best thing to do)
+                var = torch.mean(torch.square(output), dim=(2,3), keepdim=True) # Compute second moment for each filter
+                var = torch.mean(var, dim=1, keepdim=True) # Average second moment across all filters (TODO: This might not be the best thing to do)
                 output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item()])
             elif self.evalution_mode:
                 # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, dim=(1,2,3), keepdim=True).cpu().detach().numpy()
-                var = torch.var(output, dim=(1,2,3), unbiased=False, keepdim=True).cpu().detach().numpy()
+                mu = torch.mean(output, dim=(2,3), keepdim=True) # Compute first moment for each filter
+                mu = torch.mean(mu, dim=1, keepdim=True).cpu().detach().numpy() # Average first moment across all filters (TODO: This might not be the best thing to do)
+                var = torch.mean(torch.square(output), dim=(2,3), keepdim=True) # Compute second moment for each filter
+                var = torch.mean(var, dim=1, keepdim=True).cpu().detach().numpy() # Average second moment across all filters (TODO: This might not be the best thing to do)
                 # zip the mean and variance together
                 zipped_list = list(zip(mu, var))
                 output_list.extend(zipped_list)
@@ -249,23 +261,22 @@ class Resnet9DANN(nn.Module):
 
     def register_hooks(self):
         self.conv1_hook = self.conv1.register_forward_hook(self.list_forward_hook(self.conv1_output))
-        self.conv2_hook = self.conv2.register_forward_hook(self.list_forward_hook(self.conv2_output))
-        self.conv4_hook = self.conv4.register_forward_hook(self.list_forward_hook(self.conv4_output))
-        self.conv6_hook = self.conv6.register_forward_hook(self.list_forward_hook(self.conv6_output))
 
 
     def remove_hooks(self):
         self.conv1_hook.remove()
-        self.conv2_hook.remove()
-        self.conv4_hook.remove()
-        self.conv6_hook.remove()
 
     # clear all the output lists
     def clear_output(self):
         self.conv1_output = []
-        self.conv2_output = []
-        self.conv4_output = []
-        self.conv6_output = []
+
+    def get_local_loss(self):
+        # add all the losses
+        if self.conv1.local_loss_value is None:
+            return None
+        total_loss = self.conv1.local_loss_value
+
+        return total_loss
     
     def forward(self, x):
         x = self.conv1(x)

@@ -182,7 +182,7 @@ class EiRNNCell(BaseRNNCell):
     h_t = f( (U^ex - U^eiU^ix)x + (W^ex - W^eiW^ix)h_t-1 + b)
     """
     def __init__(self, n_input, ne, ni_i2h=0.1, ni_h2h=0.1, nonlinearity=None,
-                 exponentiated=False, learn_hidden_init=False):
+                 exponentiated=False, learn_hidden_init=False, homeostasis=False):
         """
         ne : number of excitatory units in the "main" hidden layer, h
         ni_i2h : number of inhib units between x_t and h_t
@@ -196,6 +196,7 @@ class EiRNNCell(BaseRNNCell):
         self.ne = ne # redundant naming going on here with n_hidden
         self.nonlinearity = nonlinearity # could directly set init gain from this
         self.exponentiated = exponentiated
+        self.homeostasis = homeostasis
         if isinstance(ni_i2h, float): self.ni_i2h = int(ne*ni_i2h)
         elif isinstance(ni_i2h, int): self.ni_i2h = ni_i2h
         if isinstance(ni_h2h, float): self.ni_h2h = int(ne*ni_h2h)

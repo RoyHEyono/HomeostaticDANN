@@ -138,7 +138,7 @@ class LocalLossMean(nn.Module):
         def __init__(self):
             super(LocalLossMean, self).__init__()
 
-        def forward(self, inputs, targets=None, lambda_mu=1, lambda_var=1):
+        def forward(self, inputs):
 
             mean = torch.mean(inputs, dim=(2,3), keepdim=True) # Compute first moment for each filter
             mean = torch.mean(mean, dim=1, keepdim=True) # Average first moment across all filters (TODO: This might not be the best thing to do)
@@ -152,14 +152,13 @@ class LocalLossMean(nn.Module):
             criterion = nn.MSELoss()
 
             # Calculate the loss based on the L2 distance from the target values
-            loss = lambda_mu * torch.sqrt(criterion(mean, target_mean))  + lambda_var * torch.sqrt(criterion(mean_squared, target_mean_squared))
+            loss = torch.sqrt(criterion(mean, target_mean))  + torch.sqrt(criterion(mean_squared, target_mean_squared))
             
             return loss.mean()
 
 class EiConvLayer(nn.Module):
-    def __init__(self, in_channels, e_channels, i_channels, e_kernel_size, i_kernel_size,
-                 nonlinearity = None,bias=False, 
-                 weight_init_policy = EiConvInit_WexMean(), **kwargs):
+    def __init__(self, in_channels, e_channels, i_channels, e_kernel_size, i_kernel_size, bias=False, 
+                 homeostasis=None , weight_init_policy = EiConvInit_WexMean(), **kwargs):
         """
         https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         no support yet for groups   
@@ -177,41 +176,17 @@ class EiConvLayer(nn.Module):
         self.dilation = conv2d_kwargs['dilation']
         self.groups = conv2d_kwargs['groups']
         if bias: self.bias = nn.Parameter(torch.zeros(e_channels, 1,1))
-        else: self.bias=None   
-        self.nonlinearity = nonlinearity
+        else: self.bias=None
+        self.homeostasis = homeostasis
         self.weight_init_policy = weight_init_policy
-        #self.loss_fn = nn.MSELoss()
         self.loss_fn = LocalLossMean()
         self.local_loss_multiplier = nn.Parameter(torch.tensor(0.0), requires_grad=False)
-        self.p = None
-        self.norm_layer = None
         self.local_loss_value = nn.Parameter(torch.tensor(0.0), requires_grad=False)
         self.multiplier_lr = 1
-        #self.swish_fn = nn.SiLU()
         
-        # Fisher corrections are only correct for same e and i filter params 
-        # Therefore set i_params to e_params
-        #i_param_dict = conv2d_kwargs    
-        #self.e_conv = nn.Conv2d(in_channels, e_channels, e_kernel_size, **conv2d_kwargs)
-        #self.i_conv = nn.Conv2d(in_channels, i_channels, i_kernel_size, **i_param_dict)
         self.Wex = nn.Parameter(torch.randn(e_channels, in_channels, e_kernel_size, e_kernel_size))
         self.Wix = nn.Parameter(torch.randn(i_channels, in_channels, i_kernel_size, i_kernel_size))
         self.Wei = nn.Parameter(torch.randn(e_channels, i_channels))
-
-        if 'p' in kwargs:
-            self.p = kwargs['p']
-            if self.p.model.normtype == "bn": self.norm_layer = nn.BatchNorm2d(e_channels)
-            elif self.p.model.normtype == "ln": self.norm_layer = nn.GroupNorm(1,e_channels, affine=False)
-            elif self.p.model.normtype == "c_ln": self.norm_layer = CustomGroupNorm(1, e_channels, affine=False)
-            elif self.p.model.normtype == "c_ln_sub": self.norm_layer = CustomGroupNorm(1, e_channels, subtractive=True, affine=False)
-            elif self.p.model.normtype == "c_ln_div": self.norm_layer = CustomGroupNorm(1, e_channels, divisive=True, affine=False)
-            elif self.p.model.normtype.lower() == "none": self.norm_layer = None
-            self.multiplier_lr = self.p.opt.lr
-
-        
-        if self.norm_layer is not None:
-            for param in self.norm_layer.parameters():
-                param.requires_grad = False
         
         self.init_weights()
 
@@ -227,11 +202,12 @@ class EiConvLayer(nn.Module):
         
         weight = torch.reshape(Wex - torch.matmul(self.Wei, Wix),e_shape)
 
-        conv2d_unnormalized = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        conv2d = F.conv2d(x, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
         
-        if self.p.model.homeostasis and self.training:
+        # If homeostasis is activated, train conv2d
+        if self.homeostasis and self.training:
             # Compute the error difference between the normalized and unnormalized conv2d
-            local_loss = self.loss_fn(conv2d_unnormalized, lambda_mu=self.p.opt.lambda_homeo, lambda_var=self.p.opt.lambda_var)
+            local_loss = self.loss_fn(conv2d)
 
             # Set the local loss value to the computed loss
             self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
@@ -241,36 +217,8 @@ class EiConvLayer(nn.Module):
                 if param.requires_grad:
                     if 'Wei' in name or 'Wix' in name:
                         param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
-
-        if not self.p.model.homeostasis and self.norm_layer is not None:
-            # Normalize if not homeostasis but norm is specified
-            return self.norm_layer(conv2d_unnormalized)
         
-        return conv2d_unnormalized
-
-    def forward_old(self, x):
-        #print(x.shape)
-        self.e_act_map = self.e_conv(x)
-        self.i_act_map = self.i_conv(x)
-        
-        # produce subtractive map
-        self.subtractive_map = (self.Wei @ self.i_act_map.permute(2,3,1,0)).permute(3,2,0,1)
-        
-        # produce a divisve map 
-        # self.gamma = self.Wei @ (torch.exp(self.alpha) * self.i_act_map).permute(2,3,1,0)
-        # self.gamma = self.gamma.permute(3,2,0,1) + self.epsilon
-        
-        self.zhat = self.e_act_map - self.subtractive_map
-        #self.z_dot = (1/ self.gamma) * self.zhat
-        
-        #self.z = self.g*self.z_dot + self.b
-        self.z = self.zhat + self.b
-            
-        if self.nonlinearity is not None:
-            self.h = self.nonlinearity(self.z)
-        else:
-            self.h = self.z
-        return self.h
+        return conv2d
     
     def update(self, **kwargs):
         self.update_policy.update(self,**kwargs)
