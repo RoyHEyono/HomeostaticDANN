@@ -44,7 +44,6 @@ import danns_eg.predictivernn as predictivernn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
 from munch import DefaultMunch
-from danns_eg.data.mnist import get_sparse_fashionmnist_dataloaders, get_sparse_mnist_dataloaders
 import danns_eg.utils as utils
 #ood_scatter_plot, recon_var_plot, mean_plot, var_plot
 
@@ -58,7 +57,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='fashionmnist'),
+    dataset=Param(str, 'dataset', default='mnist'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
@@ -73,7 +72,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(str,'norm layer type - can be None', default='ln_false'),
+    normtype=Param(str,'norm layer type - can be None', default='ln_true'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(bool,'homeostasis', default=False),
@@ -171,6 +170,7 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
         model.train()
         opt.zero_grad(set_to_none=True)
         with autocast():
+            ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
             
@@ -215,9 +215,10 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
     model.eval()
     with torch.no_grad():
         train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
-        for ims, labs in loaders['train_eval']:
+        for ims, labs in loaders['train']:
             with autocast():
                 num_of_local_layers = 0
+                ims, labs = ims.squeeze(1).cuda(), labs.cuda()
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
@@ -235,6 +236,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
             with autocast():
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 num_of_local_layers = 0
+                ims, labs = ims.squeeze(1).cuda(), labs.cuda()
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val

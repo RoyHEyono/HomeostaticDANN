@@ -399,22 +399,14 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.hex = torch.matmul(x, self.Wex.T)
         self.hi = torch.matmul(x, self.Wix.T)
         self.hei = torch.matmul(self.relu(self.hi), self.Wei.T)
-        # self.hi = self.Wix(self.relu(x))
-        # self.hei = self.Wei(self.relu(self.hi))
 
         self.z = self.hex - self.hei # Temporary solution
 
         if self.divisive_inh:
-            #self.exp_alpha = torch.exp(self.alpha) # 1 x ni
             self.exp_alpha = 0.01
-
-            # ne x batch = (1xni * ^ne^xni ) @ nix^btch^ +  nex1
             self.gamma = torch.matmul((self.exp_alpha*self.relu(self.hi)), self.Wei.T) + self.epsilon
-
             self.z = (1/ self.gamma) * self.z
 
-        # self.z = torch.matmul(x, self.W.T)
-        # if self.b: self.z = self.z + self.b.T
         if self.use_bias: self.z = self.z + self.b.T
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
@@ -427,9 +419,6 @@ class EiDenseLayerHomeostatic(BaseModule):
         if self.homeostasis and self.training:
             
             local_loss = self.loss_fn(self.h)
-
-            # Set the local loss value to the computed loss
-            # self.local_loss_value = nn.Parameter(torch.tensor(local_loss.item()), requires_grad=False)
             
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():

@@ -44,7 +44,6 @@ import danns_eg.predictivernn as predictivernn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
 from munch import DefaultMunch
-from danns_eg.data.mnist import get_sparse_fashionmnist_dataloaders, get_sparse_mnist_dataloaders
 import danns_eg.utils as utils
 #ood_scatter_plot, recon_var_plot, mean_plot, var_plot
 
@@ -58,7 +57,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='fashionmnist'),
+    dataset=Param(str, 'dataset', default='perm_invariant_mnist'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
@@ -171,6 +170,7 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
         model.train()
         opt.zero_grad(set_to_none=True)
         with autocast():
+            ims = ims.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
             
