@@ -57,7 +57,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='mnist'),
+    dataset=Param(str, 'dataset', default='fashionmnist'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
@@ -66,6 +66,9 @@ Section('train', 'Training related parameters').params(
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
+    brightness_factor=Param(float, 'random brightness jitter', default=0),
+    contrast_jitter=Param(bool, 'contrast jitter', default=False),
+
 ) 
 # note this should be false for danns bec i input could be positive if not
 # we require x to be non-negative

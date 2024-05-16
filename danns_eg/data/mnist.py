@@ -18,6 +18,33 @@ from ffcv.transforms import ToDevice
 # from config import DATASETS_DIR
 # import train_utils
 
+class RandomAdjustBrightness:
+    def __init__(self, brightness_factor):
+        """
+        Initializes the RandomAdjustBrightness transform.
+        
+        Parameters:
+        brightness_factor (float): The maximum absolute value by which to adjust the brightness.
+        """
+        self.brightness_factor = brightness_factor
+
+    def __call__(self, x):
+        """
+        Applies the random brightness adjustment to the input image.
+
+        Parameters:
+        x (Tensor): The input image tensor.
+
+        Returns:
+        Tensor: The brightness-adjusted image.
+        """
+        # Generate a random value within the range [-brightness_factor, brightness_factor]
+        random_adjustment = (np.random.rand() * 2 - 1) * self.brightness_factor
+        # Adjust the brightness
+        x = x + random_adjustment
+        # Clip the values to ensure they remain within [0, 1]
+        return torch.clamp(x, 0, 1)
+
 # Define custom contrast stretching function
 def contrast_stretching(img, min_percentile=0, max_percentile=100):
     #min_val = np.percentile(img.numpy(), min_percentile, axis=None)
@@ -104,22 +131,23 @@ def get_sparse_permutation_invariant_mnist_dataloaders(p, permutation_invariant=
     return {"train":train_dataloader, "test":test_dataloader}
 
 
-def get_sparse_permutation_invariant_fashionmnist_dataloaders(p, permutation_invariant=False, contrast=False):
+def get_sparse_permutation_invariant_fashionmnist_dataloaders(p, permutation_invariant=False, contrast=False, brightness_factor=0):
     # Define transformation to be applied to the data
 
+    transform_composition = [trnf.PILToTensor(), # Convert image to tensor
+                        trnf.Lambda(lambda x: x / 255.0),]
+
     if contrast:
-        transform = trnf.Compose([
-                                trnf.PILToTensor(), # Convert image to tensor,
-                                ContrastStretching(min_percentile=0, max_percentile=100),
-                                trnf.Lambda(lambda x: x / 255.0),
-                                trnf.Lambda(lambda x: x.view(x.size(0), -1)),
-                            ])
-    else:
-        transform = trnf.Compose([
-            trnf.PILToTensor(), # Convert image to tensor
-            trnf.Lambda(lambda x: x / 255.0),
-            trnf.Lambda(lambda x: x.view(x.size(0), -1)),
+        transform_composition.append(ContrastStretching(min_percentile=0, max_percentile=100))
+
+    if brightness_factor:
+        transform_composition.append(RandomAdjustBrightness(brightness_factor))
+
+    transform_composition.extend([ 
+            trnf.Lambda(lambda x: x.view(x.size(0), -1))
         ])
+
+    transform = trnf.Compose(transform_composition)
 
     # Download and load the training dataset
     train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=True, transform=transform, download=False)
