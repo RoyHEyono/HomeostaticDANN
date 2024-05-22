@@ -28,26 +28,27 @@ class prnn(nn.Module):
 
     def list_forward_hook(self, output_list):
         def forward_hook(layer, input, output):
-            inh_output = torch.matmul(input[0], layer.Wix.T)
-            if self.training:
-                # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, axis=-1)
-                # Second moment instead of variance
-                var = torch.mean(output**2, axis=-1)
-                mu_inh = torch.mean(inh_output, axis=-1)
-                var_inh = torch.mean(inh_output**2, axis=-1)
-                output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item(), torch.mean(mu_inh).item(), torch.mean(var_inh).item()])
-            elif self.evaluation_mode:
-                # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, axis=-1).cpu().detach().numpy()
-                #var = torch.var(output, axis=-1).cpu().detach().numpy()
-                # Second moment instead of variance
-                var = (torch.mean(output**2, axis=-1)).cpu().detach().numpy()
-                mu_inh = (torch.mean(inh_output, axis=-1)).cpu().detach().numpy()
-                var_inh = (torch.mean(inh_output**2, axis=-1)).cpu().detach().numpy()
-                # zip the mean and variance together
-                zipped_list = list(zip(mu, var, mu_inh, var_inh))
-                output_list.extend(zipped_list)
+            # inh_output = torch.matmul(input[0], layer.Wix.T)
+            # if self.training:
+            #     # get mean and variance of the output on axis 1 and append to output list
+            #     mu = torch.mean(output, axis=-1)
+            #     # Second moment instead of variance
+            #     var = torch.mean(output**2, axis=-1)
+            #     mu_inh = torch.mean(inh_output, axis=-1)
+            #     var_inh = torch.mean(inh_output**2, axis=-1)
+            #     output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item(), torch.mean(mu_inh).item(), torch.mean(var_inh).item()])
+            # elif self.evaluation_mode:
+            #     # get mean and variance of the output on axis 1 and append to output list
+            #     mu = torch.mean(output, axis=-1).cpu().detach().numpy()
+            #     #var = torch.var(output, axis=-1).cpu().detach().numpy()
+            #     # Second moment instead of variance
+            #     var = (torch.mean(output**2, axis=-1)).cpu().detach().numpy()
+            #     mu_inh = (torch.mean(inh_output, axis=-1)).cpu().detach().numpy()
+            #     var_inh = (torch.mean(inh_output**2, axis=-1)).cpu().detach().numpy()
+            #     # zip the mean and variance together
+            #     zipped_list = list(zip(mu, var, mu_inh, var_inh))
+            #     output_list.extend(zipped_list)
+            return 
 
             
         return forward_hook
@@ -66,10 +67,9 @@ class prnn(nn.Module):
     # get loss values from all fc layers
     def get_local_loss(self):
         # add all the losses
-        if self.ei_cell.local_loss_value is None:
-            return None
-        total_loss = self.ei_cell.local_loss_value
-        return total_loss
+        return 0
+        # total_loss = self.ei_cell.local_loss_value
+        # return total_loss
 
     def reset_hidden(self, batch_size):
         self.ei_cell.reset_hidden(requires_grad=True, batch_size=batch_size)

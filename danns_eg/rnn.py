@@ -249,13 +249,13 @@ class EiRNNCell(BaseRNNCell):
         # where Wix is set to mean row of Wex and rows of Wei sum to 1.
         if ex_distribution =="exponential":
             exp_scale = target_std_wex # The scale parameter, \beta = 1/\lambda = std
-            Wex_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.n_input))
+            Wex_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.ne))
             Wei_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.ni_h2h))
         
         elif ex_distribution =="lognormal":
             # here is where we decide how to skew the distribution
             mu, sigma = calc_ln_mu_sigma(target_std_wex,target_std_wex**2)
-            Wex_np = np.random.lognormal(mu, sigma, size=(self.ne, self.n_input))
+            Wex_np = np.random.lognormal(mu, sigma, size=(self.ne, self.ne))
             Wei_np = np.random.lognormal(mu, sigma, size=(self.ne, self.ni_h2h))
         Wei_np /= Wei_np.sum(axis=1, keepdims=True)
         Wix_np = np.ones(shape=(self.ni_h2h,1))*Wex_np.mean(axis=0,keepdims=True)

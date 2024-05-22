@@ -57,4 +57,4 @@ momentum=${momentum_arr[$idx5]}
 # pidx=$((SLURM_ARRAY_TASK_ID/lenL))
 echo $idx1,$idx2,$idx3,$idx4,$idx5
 echo $lr,$lr_wei,$lr_wix,$momentum_inhib,$momentum
-python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py --train.dataset='perm_invariant_mnist' --opt.lr=$lr --opt.wd=$1 --opt.inhib_momentum=$momentum_inhib --opt.momentum=$momentum --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --train.batch_size=$batch_size --exp.wandb_project=Vanilla-DANN-MNIST --exp.wandb_entity=project_danns --exp.use_wandb=True
+python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py --data.brightness_factor=$2 --train.dataset='fashionmnist' --opt.lr=$lr --opt.wd=$1 --opt.inhib_momentum=$momentum_inhib --opt.momentum=$momentum --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --train.batch_size=$batch_size --exp.wandb_project=Luminosity --exp.wandb_entity=project_danns --exp.use_wandb=True

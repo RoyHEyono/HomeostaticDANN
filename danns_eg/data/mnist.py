@@ -131,8 +131,15 @@ def get_sparse_permutation_invariant_mnist_dataloaders(p, permutation_invariant=
     return {"train":train_dataloader, "test":test_dataloader}
 
 
-def get_sparse_permutation_invariant_fashionmnist_dataloaders(p, permutation_invariant=False, contrast=False, brightness_factor=0):
+def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutation_invariant=False, contrast=False, brightness_factor=0):
     # Define transformation to be applied to the data
+
+    if p: 
+        batchsize = p.train.batch_size
+        use_test = p.train.use_testset
+    else: 
+        batchsize = 32
+        use_test = True
 
     transform_composition = [trnf.PILToTensor(), # Convert image to tensor
                         trnf.Lambda(lambda x: x / 255.0),]
@@ -162,12 +169,12 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p, permutation_inv
         train_dataset = ConsistentPermutationInvariantMNISTDataset(train_dataset, permutation_order)
         test_dataset = ConsistentPermutationInvariantMNISTDataset(test_dataset, permutation_order)
 
-    if p.train.use_testset:
+    if use_test:
         # Create a dataloader for the training dataset
-        train_dataloader = DataLoader(train_dataset, batch_size=p.train.batch_size, shuffle=True)
+        train_dataloader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False)
         
         # Create a dataloader for the test dataset
-        test_dataloader = DataLoader(test_dataset, batch_size=p.train.batch_size, shuffle=True)
+        test_dataloader = DataLoader(test_dataset, batch_size=batchsize, shuffle=False)
     else:
         dataset_size = len(train_dataset)
         data_indices = list(range(dataset_size))
@@ -180,10 +187,10 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p, permutation_inv
         val_sampler   = torch.utils.data.sampler.SubsetRandomSampler(valid_idx)
 
         # Create a dataloader for the training dataset
-        train_dataloader = DataLoader(train_dataset, batch_size=p.train.batch_size, sampler=train_sampler)
+        train_dataloader = DataLoader(train_dataset, batch_size=batchsize, sampler=train_sampler)
 
         # Create a dataloader for the test dataset
-        test_dataloader = DataLoader(train_dataset, batch_size=p.train.batch_size, sampler=val_sampler)
+        test_dataloader = DataLoader(train_dataset, batch_size=batchsize, sampler=val_sampler)
 
     return {"train":train_dataloader, "test":test_dataloader}
 

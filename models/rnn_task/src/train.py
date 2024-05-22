@@ -168,9 +168,11 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
 
 
         model.train()
+        model.reset_hidden(ims.shape[0])
         opt.zero_grad(set_to_none=True)
         with autocast():
-            ims = ims.cuda()
+            ims = ims.squeeze(1).cuda()
+            labs = labs.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
             
@@ -215,9 +217,12 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
     model.eval()
     with torch.no_grad():
         train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
-        for ims, labs in loaders['train_eval']:
+        for ims, labs in loaders['train']:
             with autocast():
+                ims = ims.squeeze(1).cuda()
+                labs = labs.cuda()
                 num_of_local_layers = 0
+                model.reset_hidden(ims.shape[0])
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
@@ -233,8 +238,11 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast():
+                ims = ims.squeeze(1).cuda()
+                labs = labs.cuda()
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 num_of_local_layers = 0
+                model.reset_hidden(ims.shape[0])
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
@@ -285,6 +293,7 @@ def train_model(p):
 def build_model(p):
     #model = densenets.net(p)
     model = predictivernn.net(p)
+    model.reset_hidden(batch_size=p.train.batch_size)
     return model
 
 def convert_to_dict(obj):
