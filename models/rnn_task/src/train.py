@@ -164,6 +164,7 @@ def get_optimizer(p, model):
 def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
+    n_rows = 28 # MNIST / FashionMNIST sequential input
     for ims, labs in loaders['train']:
 
 
@@ -171,9 +172,14 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
         model.reset_hidden(ims.shape[0])
         opt.zero_grad(set_to_none=True)
         with autocast():
-            ims = ims.squeeze(1).cuda()
+            ims = ims.cuda()
+            ims = ims.view(ims.shape[0], 1, 28, 28)
             labs = labs.cuda()
-            out = model(ims)
+
+            # Sequential input
+            for row_i in range(n_rows):
+                out  = model(ims[:, 0, row_i, :])
+            
             loss = loss_fn(out, labs)
             
             # TODO: We need to return the local loss from the model
@@ -215,15 +221,19 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
 
 def eval_model(epoch, model, loaders, loss_fn_sum, p):
     model.eval()
+    n_rows = 28
     with torch.no_grad():
         train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['train']:
             with autocast():
-                ims = ims.squeeze(1).cuda()
+                ims = ims.cuda()
+                ims = ims.view(ims.shape[0], 1, 28, 28)
                 labs = labs.cuda()
                 num_of_local_layers = 0
                 model.reset_hidden(ims.shape[0])
-                out = model(ims)
+                # Sequential input
+                for row_i in range(n_rows):
+                    out  = model(ims[:, 0, row_i, :])
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
@@ -238,12 +248,15 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast():
-                ims = ims.squeeze(1).cuda()
+                ims = ims.cuda()
+                ims = ims.view(ims.shape[0], 1, 28, 28)
                 labs = labs.cuda()
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 num_of_local_layers = 0
                 model.reset_hidden(ims.shape[0])
-                out = model(ims)
+                # Sequential input
+                for row_i in range(n_rows):
+                    out  = model(ims[:, 0, row_i, :])
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
@@ -273,22 +286,6 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],
                 "train_local_loss":results["train_local_losses"][-1], "test_local_loss":results["test_local_losses"][-1],
                 "train_total_loss":results["train_total_loss"][-1], "test_total_loss":results["test_total_loss"][-1],})
-
-
-def train_model(p):
-    log_epochs = 1 # how often to eval and log model performance
-    #print("Training model for {} epochs with {} optimizer, lr={}, wd={:.1e}".format(EPOCHS,opt.__class__.__name__,lr,weight_decay))
-    progress_bar = tqdm(range(1,1+p.train.epochs))
-    
-    for ep_i in progress_bar:
-        train_epoch(ep_i)
-        if ep_i%log_epochs==0:
-            eval_model(ep_i)
-            # here also get model info like % dead units, "effective rank", and weight norm           
-            progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(
-                ep_i,results["train_accs"][-1],results["test_accs"][-1]))
-        #print(scheduler.get_last_lr())
-    return results 
 
 def build_model(p):
     #model = densenets.net(p)

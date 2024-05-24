@@ -14,7 +14,7 @@ class prnn(nn.Module):
 
         print(f"Homeostasis is {homeostasis}")
         
-        self.ei_cell = EiRNNCell(784,hidden_size, nonlinearity=nn.LayerNorm(hidden_size) if nonlinearity=='ln_true' else None, exponentiated=None, 
+        self.ei_cell = EiRNNCell(28, hidden_size, nonlinearity=nn.LayerNorm(hidden_size) if nonlinearity=='ln_true' else None, exponentiated=None, 
                         learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
         
         self.ei_cell_output = []
