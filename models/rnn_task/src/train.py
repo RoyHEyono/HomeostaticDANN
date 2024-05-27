@@ -57,7 +57,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='perm_invariant_mnist'),
+    dataset=Param(str, 'dataset', default='fashion'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),

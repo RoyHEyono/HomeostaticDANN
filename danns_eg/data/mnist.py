@@ -19,7 +19,7 @@ from ffcv.transforms import ToDevice
 # import train_utils
 
 class RandomAdjustBrightness:
-    def __init__(self, brightness_factor):
+    def __init__(self, brightness_factor, fixed=False):
         """
         Initializes the RandomAdjustBrightness transform.
         
@@ -27,6 +27,7 @@ class RandomAdjustBrightness:
         brightness_factor (float): The maximum absolute value by which to adjust the brightness.
         """
         self.brightness_factor = brightness_factor
+        self.fixed = fixed
 
     def __call__(self, x):
         """
@@ -38,8 +39,13 @@ class RandomAdjustBrightness:
         Returns:
         Tensor: The brightness-adjusted image.
         """
-        # Generate a random value within the range [-brightness_factor, brightness_factor]
+
         random_adjustment = (np.random.rand() * 2 - 1) * self.brightness_factor
+
+        # Generate a random value within the range [-brightness_factor, brightness_factor]
+        if self.fixed:
+            random_adjustment = self.brightness_factor
+            
         # Adjust the brightness
         x = x + random_adjustment
         # Clip the values to ensure they remain within [0, 1]
@@ -131,7 +137,7 @@ def get_sparse_permutation_invariant_mnist_dataloaders(p, permutation_invariant=
     return {"train":train_dataloader, "test":test_dataloader}
 
 
-def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutation_invariant=False, contrast=False, brightness_factor=0):
+def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutation_invariant=False, contrast=False, brightness_factor=0, brightness_factor_eval=0):
     # Define transformation to be applied to the data
 
     if p: 
@@ -141,25 +147,32 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutatio
         batchsize = 32
         use_test = True
 
-    transform_composition = [trnf.PILToTensor(), # Convert image to tensor
+    train_transform = [trnf.PILToTensor(), # Convert image to tensor
+                        trnf.Lambda(lambda x: x / 255.0),]
+    test_transform = [trnf.PILToTensor(), # Convert image to tensor
                         trnf.Lambda(lambda x: x / 255.0),]
 
     if contrast:
-        transform_composition.append(ContrastStretching(min_percentile=0, max_percentile=100))
+        train_transform.append(ContrastStretching(min_percentile=0, max_percentile=100))
+        test_transform.append(ContrastStretching(min_percentile=0, max_percentile=100))
 
-    if brightness_factor:
-        transform_composition.append(RandomAdjustBrightness(brightness_factor))
-
-    transform_composition.extend([ 
-            trnf.Lambda(lambda x: x.view(x.size(0), -1))
-        ])
-
-    transform = trnf.Compose(transform_composition)
+    train_transform.extend([ 
+                RandomAdjustBrightness(brightness_factor),
+                trnf.Lambda(lambda x: x.view(x.size(0), -1))
+            ])
+    test_transform.extend([ 
+                RandomAdjustBrightness(brightness_factor_eval if brightness_factor_eval else brightness_factor, fixed=brightness_factor_eval),
+                trnf.Lambda(lambda x: x.view(x.size(0), -1))
+            ])
+    
+    train_transform = trnf.Compose(train_transform)
+    test_transform = trnf.Compose(test_transform)
 
     # Download and load the training dataset
-    train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=True, transform=transform, download=False)
-    # Download and load the test dataset
-    test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=False, transform=transform, download=False)
+    train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=True, transform=train_transform, download=False)
+    test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=False, transform=test_transform if brightness_factor_eval else transform, download=False)
+
+    
 
     if permutation_invariant:
         # Generate a fixed permutation order
@@ -169,7 +182,7 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutatio
         train_dataset = ConsistentPermutationInvariantMNISTDataset(train_dataset, permutation_order)
         test_dataset = ConsistentPermutationInvariantMNISTDataset(test_dataset, permutation_order)
 
-    if use_test:
+    if use_test or brightness_factor_eval:
         # Create a dataloader for the training dataset
         train_dataloader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False)
         

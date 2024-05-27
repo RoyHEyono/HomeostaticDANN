@@ -67,6 +67,7 @@ Section('train', 'Training related parameters').params(
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
     brightness_factor=Param(float, 'random brightness jitter', default=0),
+    brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 
 ) 
@@ -75,7 +76,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(str,'norm layer type - can be None', default='ln_false'),
+    normtype=Param(str,'norm layer type - can be None', default='ln_true'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(bool,'homeostasis', default=False),
@@ -355,7 +356,7 @@ if __name__ == "__main__":
     if p.exp.use_wandb:
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])
         run.finish()
-
+    
     # Save pickle of layers
     layers_dict = []
     for layer_num in range(1,2):
