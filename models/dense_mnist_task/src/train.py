@@ -61,12 +61,12 @@ Section('train', 'Training related parameters').params(
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
-    use_testset=Param(bool, 'use testset as val set', default=False),
+    use_testset=Param(bool, 'use testset as val set', default=True),
     )
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
-    brightness_factor=Param(float, 'random brightness jitter', default=0),
+    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
     brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 

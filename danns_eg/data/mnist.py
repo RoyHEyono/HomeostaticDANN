@@ -170,7 +170,7 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutatio
 
     # Download and load the training dataset
     train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=True, transform=train_transform, download=False)
-    test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=False, transform=test_transform if brightness_factor_eval else transform, download=False)
+    test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=False, transform=test_transform if brightness_factor_eval else train_transform, download=False)
 
     
 
