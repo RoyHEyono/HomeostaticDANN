@@ -15,6 +15,7 @@ from pprint import pprint
 from tqdm import tqdm
 import argparse
 from fastargs import Section, Param, get_current_config
+from fastargs.decorators import param
 
 import matplotlib.pyplot as plt
 import wandb
@@ -79,22 +80,21 @@ Section('model', 'Model Parameters').params(
     normtype=Param(str,'norm layer type - can be None', default='ln_true'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(bool,'homeostasis', default=False),
+    homeostasis=Param(int,'homeostasis', default=1),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='SGD'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=0.001), #0.001 # Weight decay is very bad for inhibition
-    momentum=Param(float,'momentum factor', default=0.5), #0.5 # We need a seperate momentum for the inhib component as well
+    wd=Param(float,'weight decay lambda', default=0), #0.001 # Weight decay is very bad for inhibition
+    momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
-    use_sep_inhib_lrs=Param(bool,' ', default=True),
+    use_sep_inhib_lrs=Param(int,' ', default=0),
     use_sep_bias_gain_lrs=Param(bool,' ', default=False),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1),
-    lambda_var=Param(float, 'lambda homeostasis', default=1),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0.5),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
@@ -113,8 +113,8 @@ Section('exp', 'General experiment details').params(
     use_autocast=Param(bool, 'autocast fp16', default=True),
     log_interval=Param(int, 'log-interval in terms of epochs', default=1),
     data_dir=Param(str, 'data dir - if passed will not write ffcv', default=''),
-    use_wandb=Param(bool, 'flag to use wandb', default=False),
-    wandb_project=Param(str, 'project under which to log runs', default=""),
+    use_wandb=Param(int, 'flag to use wandb', default=0),
+    wandb_project=Param(str, 'project under which to log runs', default="Test"),
     wandb_entity=Param(str, 'team under which to log runs', default=""),
     wandb_tag=Param(str, 'tag under which to log runs', default="default"),
     save_results=Param(bool,'save_results', default=False),
@@ -130,7 +130,7 @@ def get_optimizer(p, model):
     for k, group in params_groups.items():
         d = {"params":group, "name":k}
         
-        if k in ['wex_params', 'wix_params', 'wei_params']: # I've removed the clamping from these: "wix_params", "wei_params"
+        if k in ['wex_params', 'wix_params', 'wei_params']:
             d["positive_only"] = True
         else: 
             d["positive_only"] = False
@@ -233,8 +233,8 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
         train_local_loss /= n_train
-        train_local_loss *= 1000 # To make it comparable to the global loss
         
+        model.register_eval=True
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast():
@@ -249,11 +249,11 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 n_test += ims.shape[0]
                 test_local_loss += model.get_local_loss()
 
+        model.register_eval=False
         #print("Not currently running train eval!")
         test_acc = test_correct / n_test * 100
         test_loss /=  n_test
         test_local_loss /= n_test
-        test_local_loss *= 1000 # To make it comparable to the global loss
 
         results["test_accs"].append(test_acc)
         results["test_losses"].append(test_loss.cpu().item())
@@ -324,7 +324,10 @@ if __name__ == "__main__":
                             config=params_to_log, tags=[p.exp.wandb_tag])
         name = f'{"EG" if p.opt.exponentiated else "SGD"} lr:{p.opt.lr} wd:{p.opt.wd} m:{p.opt.momentum} '
         if p.model.is_dann:
-            name += f"wix:{p.opt.inhib_lrs.wix} wei:{p.opt.inhib_lrs.wei}"
+            if p.opt.use_sep_inhib_lrs:
+                name += f"wix:{p.opt.inhib_lrs.wix} wei:{p.opt.inhib_lrs.wei}"
+            else:
+                name += f"wix:{p.opt.lr} wei:{p.opt.lr}"
 
     loaders = get_dataloaders(p)
     model = build_model(p)
@@ -337,7 +340,7 @@ if __name__ == "__main__":
     lr_schedule = np.interp(np.arange((EPOCHS+1) * iters_per_epoch),
                             [0, 5 * iters_per_epoch, EPOCHS * iters_per_epoch],
                             [0, 1, 0])
-    
+    lr_schedule = lr_schedule*0 + 1 # NOTE: Temporary for homeostatic networks
     scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
     scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
@@ -356,32 +359,8 @@ if __name__ == "__main__":
     if p.exp.use_wandb:
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])
         run.finish()
-    
-    # Save pickle of layers
-    layers_dict = []
-    for layer_num in range(1,2):
-        layers_dict.append(np.array(getattr(model, f"fc{layer_num}_output")))
 
-    if not p.exp.name == "":
-
-        # Open the file in binary write mode ('wb')
-        with open(f"{p.exp.name}_layers.pkl", 'wb') as file:
-            # Use pickle.dump() to save the list to the file
-            pkl.dump(layers_dict, file)
-
-        with open(f"{p.exp.name}_results.pkl", 'wb') as file:
-            # Use pickle.dump() to save the list to the file
-            pkl.dump(results, file)
-
-        torch.save(model.state_dict(), f"{p.exp.name}.pt")
-
-
-        # Generate plots here
-        utils.mean_plot(model)
-        utils.var_plot(model)
-        
-        #recon_var_plot(model)
-        utils.ood_scatter_plot(p, loaders, model)
+    model.remove_hooks()
 
     # Print best test and training accuracy
     print("Best train accuracy: {:.2f}".format(max(results["train_accs"])))

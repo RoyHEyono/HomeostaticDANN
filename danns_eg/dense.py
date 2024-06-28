@@ -262,7 +262,7 @@ class LocalLossMean(nn.Module):
         def __init__(self):
             super(LocalLossMean, self).__init__()
 
-        def forward(self, inputs, targets=None, lambda_mu=1, lambda_var=1):
+        def forward(self, inputs):
 
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
@@ -276,7 +276,8 @@ class LocalLossMean(nn.Module):
             criterion = nn.MSELoss()
 
             # Calculate the loss based on the L2 distance from the target values
-            loss = lambda_mu * torch.sqrt(criterion(mean, target_mean))  + lambda_var * torch.sqrt(criterion(mean_squared, target_mean_squared))
+            loss = criterion(mean, target_mean)  + criterion(mean_squared, target_mean_squared)
+            #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
             
             return loss.mean()
 
@@ -285,7 +286,7 @@ class EiDenseLayerHomeostatic(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False,
+    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1,
                  init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
@@ -299,6 +300,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.use_bias = use_bias
         self.ne = ne
         self.homeostasis = homeostasis
+        self.lambda_homeo = lambda_homeo
         self.loss_fn = LocalLossMean()
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
@@ -414,17 +416,16 @@ class EiDenseLayerHomeostatic(BaseModule):
             self.h = self.z
 
         
-        self.local_loss_value = self.loss_fn(self.h).item()
-
         if self.homeostasis and self.training:
             
             local_loss = self.loss_fn(self.h)
+            self.local_loss_value = local_loss.item()
             
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():
                 if param.requires_grad:
                     if 'Wei' in name or 'Wix' in name:
-                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+                        param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
 
         return self.h

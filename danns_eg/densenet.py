@@ -6,101 +6,56 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayerHomeostatic
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
+import wandb
 
 
 class DenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, homeostasis=True, nonlinearity=None):
+    def __init__(self, input_size, hidden_size, output_size, configs, homeostasis=True, nonlinearity=None):
         super(DenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         print(f"Homeostasis is {homeostasis}")
-        self.fc1 = EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
+        self.fc1 = EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, # true is EG,
                                      use_bias=True)
         self.fc1_output = []
         self.relu = nn.ReLU()
-        # self.fc2 = EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
-        #                              use_bias=True)
-        # self.fc2_output = []
-        # self.fc3 = EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
-        #                              use_bias=True)
-        # self.fc3_output = []
-        # self.fc4 = EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, # true is EG
-        #                              use_bias=True)
-        # self.fc4_output = []
-        self.fc5 = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, # true is EG
+        self.fc5 = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, # true is EG
                                      use_bias=True)
         self.evaluation_mode = False
-        
         self.nonlinearity = nn.LayerNorm(hidden_size) if nonlinearity=='ln_true' else None
-
-        
-
-    def list_forward_hook(self, output_list):
+        self.configs = configs
+        self.register_eval = False
+    
+    def list_forward_hook(self, output_list, layername):
         def forward_hook(layer, input, output):
             inh_output = torch.matmul(input[0], layer.Wix.T)
-            if self.training:
-                # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, axis=-1)
-                # Second moment instead of variance
-                var = torch.mean(output**2, axis=-1)
-                mu_inh = torch.mean(inh_output, axis=-1)
-                var_inh = torch.mean(inh_output**2, axis=-1)
-                output_list.append([torch.mean(mu).item(), torch.std(mu).item(), torch.mean(var).item(), torch.std(var).item(), torch.mean(mu_inh).item(), torch.mean(var_inh).item()])
-            elif self.evaluation_mode:
-                # get mean and variance of the output on axis 1 and append to output list
-                mu = torch.mean(output, axis=-1).cpu().detach().numpy()
-                #var = torch.var(output, axis=-1).cpu().detach().numpy()
-                # Second moment instead of variance
-                var = (torch.mean(output**2, axis=-1)).cpu().detach().numpy()
-                mu_inh = (torch.mean(inh_output, axis=-1)).cpu().detach().numpy()
-                var_inh = (torch.mean(inh_output**2, axis=-1)).cpu().detach().numpy()
-                # zip the mean and variance together
-                zipped_list = list(zip(mu, var, mu_inh, var_inh))
-                output_list.extend(zipped_list)
-
-            
+            # get mean and variance of the output on axis 1 and append to output list
+            mu = torch.mean(output, axis=-1).mean().item()
+            # Second moment instead of variance
+            var = torch.mean(output**2, axis=-1).mean().item()
+            mu_inh = torch.mean(inh_output, axis=-1).mean().item()
+            var_inh = torch.mean(inh_output**2, axis=-1).mean().item()
+            if self.configs.exp.use_wandb: 
+                if self.register_eval:
+                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var, f"eval_{layername}_inh_mu":mu_inh, f"eval_{layername}_inh_var":var_inh})
+                else:
+                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_inh_mu":mu_inh, f"train_{layername}_inh_var":var_inh})
         return forward_hook
 
     def register_hooks(self):
-        self.fc1_hook = self.fc1.register_forward_hook(self.list_forward_hook(self.fc1_output))
-        # self.fc2_hook = self.fc2.register_forward_hook(self.list_forward_hook(self.fc2_output))
-        # self.fc3_hook = self.fc3.register_forward_hook(self.list_forward_hook(self.fc3_output))
-        # self.fc4_hook = self.fc4.register_forward_hook(self.list_forward_hook(self.fc4_output))
-
+        self.fc1_hook = self.fc1.register_forward_hook(self.list_forward_hook(self.fc1_output, 'fc1'))
 
     def remove_hooks(self):
         self.fc1_hook.remove()
-        # self.fc2_hook.remove()
-        # self.fc3_hook.remove()
-        # self.fc4_hook.remove()
-
-    # clear all the output lists
-    def clear_output(self):
-        self.fc1_output = []
-        # self.fc2_output = []
-        # self.fc3_output = []
-        # self.fc4_output = []
 
     # get loss values from all fc layers
     def get_local_loss(self):
-        # add all the losses
-        if self.fc1.local_loss_value is None:
-            return None
-        total_loss = self.fc1.local_loss_value #+ self.fc2.local_loss_value \
-                    #
-        total_loss = total_loss / 4
-        return total_loss
+        return self.fc1.local_loss_value
     
     def forward(self, x):
         x = self.fc1(x)
         if self.nonlinearity is not None:
             x = self.nonlinearity(x)
         x = self.relu(x)
-        # x = self.fc2(x)
-        # x = self.relu(x)
-        # x = self.fc3(x)
-        # x = self.relu(x)
-        # x = self.fc4(x)
-        # x = self.relu(x)
         x = self.fc5(x)
         return x
 
@@ -116,9 +71,9 @@ def net(p:dict):
     
     if p.model.is_dann:
         if p.model.homeostasis:
-            model = DenseDANN(input_dim, width, num_class, homeostasis=p.model.homeostasis, nonlinearity=None)
+            model = DenseDANN(input_dim, width, num_class, configs=p, homeostasis=p.model.homeostasis, nonlinearity=None)
         else:
-            model = DenseDANN(input_dim, width, num_class, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
+            model = DenseDANN(input_dim, width, num_class, configs=p, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
         return model
         
     
