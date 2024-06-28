@@ -132,3 +132,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .DS_Store
+
+#sbatch output
+/home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/batch_scripts/sbatch_err
+/home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/batch_scripts/sbatch_out
