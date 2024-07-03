@@ -77,27 +77,28 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(str,'norm layer type - can be None', default='ln_true'),
+    normtype=Param(str,'norm layer type - can be None', default='ln_false'),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
+    task_opt_inhib=Param(int,'homeostasis', default=1),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='SGD'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=0), #0.001 # Weight decay is very bad for inhibition
-    momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
-    inhib_momentum=Param(float,'inhib momentum factor', default=0),
+    wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
+    momentum=Param(float,'momentum factor', default=0.9), #0.5 # We need a seperate momentum for the inhib component as well
+    inhib_momentum=Param(float,'inhib momentum factor', default=0.9),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
-    use_sep_inhib_lrs=Param(int,' ', default=0),
+    use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(bool,' ', default=False),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0.5),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0),
 )
 
-Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
+Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
     wei=Param(float,'lr for Wei if dann', default=0.5), # 0.001
     wix=Param(float,'lr for Wix if dann', default=0.5), # 0.1
 )
@@ -196,6 +197,8 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
                 if param.requires_grad:
                     if 'Wix' in name or 'Wei' in name:
                         if 'fc5' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                            if p.model.task_opt_inhib:
+                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                             continue
                     
                     param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
@@ -340,7 +343,8 @@ if __name__ == "__main__":
     lr_schedule = np.interp(np.arange((EPOCHS+1) * iters_per_epoch),
                             [0, 5 * iters_per_epoch, EPOCHS * iters_per_epoch],
                             [0, 1, 0])
-    lr_schedule = lr_schedule*0 + 1 # NOTE: Temporary for homeostatic networks
+    if p.model.homeostasis and not p.model.task_opt_inhib:
+        lr_schedule = lr_schedule*0 + 1 # NOTE: Temporary for homeostatic networks
     scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
     scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
