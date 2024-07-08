@@ -81,7 +81,7 @@ Section('model', 'Model Parameters').params(
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
-    task_opt_inhib=Param(int,'homeostasis', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -92,7 +92,7 @@ Section('opt', 'optimiser parameters').params(
     inhib_momentum=Param(float,'inhib momentum factor', default=0.9),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
-    use_sep_bias_gain_lrs=Param(bool,' ', default=False),
+    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
     lambda_homeo=Param(float, 'lambda homeostasis', default=0),
@@ -146,7 +146,8 @@ def get_optimizer(p, model):
             if k == "norm_biases": 
                 d['lr'] = p.opt.bias_gain_lrs.b
                 print("hard coding non exp grad for biases")
-            elif k == "norm_gains": d['lr'] = p.opt.bias_gain_lrs.g
+            elif k == "norm_gains":
+                d['lr'] = p.opt.bias_gain_lrs.g
         
         parameters.append(d)
     

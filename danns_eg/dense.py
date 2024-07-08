@@ -286,7 +286,7 @@ class EiDenseLayerHomeostatic(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1,
+    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, affine=False,
                  init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
@@ -302,6 +302,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.homeostasis = homeostasis
         self.lambda_homeo = lambda_homeo
         self.loss_fn = LocalLossMean()
+        self.affine = affine
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
 
@@ -324,6 +325,10 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.local_loss_value = 0
         self.epsilon =  1e-6
         self.divisive_inh = False
+
+        if self.affine:
+            self.gamma = nn.Parameter(torch.ones(1))
+            self.beta = nn.Parameter(torch.ones(1))
         
         # init and define bias as 0, split into pos, neg if using eg
         if self.use_bias:
@@ -404,11 +409,6 @@ class EiDenseLayerHomeostatic(BaseModule):
 
         self.z = self.hex - self.hei # Temporary solution
 
-        if self.divisive_inh:
-            self.exp_alpha = 0.01
-            self.gamma = torch.matmul((self.exp_alpha*self.relu(self.hi)), self.Wei.T) + self.epsilon
-            self.z = (1/ self.gamma) * self.z
-
         if self.use_bias: self.z = self.z + self.b.T
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
@@ -427,6 +427,8 @@ class EiDenseLayerHomeostatic(BaseModule):
                     if 'Wei' in name or 'Wix' in name:
                         param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
+        if self.affine:
+            self.h = self.gamma * self.h + self.beta
 
         return self.h
 

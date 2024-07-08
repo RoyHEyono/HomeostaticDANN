@@ -90,6 +90,10 @@ def get_param_groups(model, return_groups_dict=False):
             elif k.lower().endswith("ei"): param_groups['wei_params'].append(param)
             elif k.lower().endswith("ex"): param_groups['wex_params'].append(param)
             elif "bias" in k.lower(): param_groups['bias_params'].append(param)
+            elif "gamma" in k.lower(): 
+                param_groups['norm_gains'].append(param)
+            elif "beta" in k.lower(): 
+                param_groups['norm_biases'].append(param)
             elif "rho"  in k.lower():param_groups['rho_params']
             else: 
                 param_groups['other_params'].append(param)
