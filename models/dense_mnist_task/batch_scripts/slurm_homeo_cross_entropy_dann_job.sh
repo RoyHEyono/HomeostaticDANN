@@ -18,7 +18,7 @@ conda activate ffcv_eg
 # Params
 lr_arr=(0.001 0.01 0.1 1 10)
 bf_arr=(0 0.5 0.75 1)
-homeo_lmbda_arr=(2 5 10 15 20)
+homeo_lmbda_arr=(0 0.001 0.01 0.1 1)
 lr_wei_arr=(1e-4 1e-2 0.1)
 lr_wix_arr=(0.1 0.5 1)
 
@@ -54,4 +54,4 @@ lr_wix=${lr_wix_arr[$idx5]}
 # lenL=${#lamda_arr[@]}
 # lidx=$((SLURM_ARRAY_TASK_ID%lenL))
 # pidx=$((SLURM_ARRAY_TASK_ID/lenL))
-python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py --data.brightness_factor=$bf --train.dataset='fashionmnist' --opt.use_sep_inhib_lrs=1 --opt.lr=$lr --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --opt.inhib_momentum=0.9 --opt.momentum=0.9 --model.homeostasis=1 --train.batch_size=$batch_size --opt.lambda_homeo=$lmbda --model.task_opt_inhib=1  --exp.wandb_project=Luminosity --exp.wandb_entity=project_danns --exp.use_wandb=1
+python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py --data.brightness_factor=$bf --train.dataset='fashionmnist' --opt.use_sep_inhib_lrs=1 --opt.lr=$lr --opt.inhib_lrs.wei=$lr_wei --opt.inhib_lrs.wix=$lr_wix --opt.inhib_momentum=0.9 --opt.momentum=0.9 --model.homeostasis=1 --train.batch_size=$batch_size --opt.lambda_homeo=$lmbda --model.task_opt_inhib=0 --opt.use_sep_bias_gain_lrs=1 --exp.wandb_project=Luminosity --exp.wandb_entity=project_danns --exp.use_wandb=1

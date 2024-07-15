@@ -327,8 +327,8 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.divisive_inh = False
 
         if self.affine:
-            self.gamma = nn.Parameter(torch.ones(1))
-            self.beta = nn.Parameter(torch.ones(1))
+            self.gamma = nn.Parameter(torch.ones(self.ne)) 
+            self.beta = nn.Parameter(torch.zeros(self.ne))
         
         # init and define bias as 0, split into pos, neg if using eg
         if self.use_bias:
