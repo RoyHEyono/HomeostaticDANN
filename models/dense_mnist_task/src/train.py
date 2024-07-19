@@ -82,6 +82,7 @@ Section('model', 'Model Parameters').params(
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -202,7 +203,13 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
                                 param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                             continue
                     
-                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    if 'fc5' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                        if p.model.homeo_opt_exc:
+                            param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                        else:
+                            param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    else:
+                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
 
                     # if 'Wex' in name:
                     #     param.grad = None # This locks in the homeostatic loss only

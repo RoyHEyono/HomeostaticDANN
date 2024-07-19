@@ -286,7 +286,7 @@ class EiDenseLayerHomeostatic(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, affine=False,
+    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, affine=False, train_exc_homeo=False,
                  init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
@@ -303,6 +303,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.lambda_homeo = lambda_homeo
         self.loss_fn = LocalLossMean()
         self.affine = affine
+        self.train_exc_homeo = train_exc_homeo
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
 
@@ -425,6 +426,8 @@ class EiDenseLayerHomeostatic(BaseModule):
             for name, param in self.named_parameters():
                 if param.requires_grad:
                     if 'Wei' in name or 'Wix' in name:
+                        param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
+                    elif self.train_exc_homeo:
                         param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
         if self.affine:

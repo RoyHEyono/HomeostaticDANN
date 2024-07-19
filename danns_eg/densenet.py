@@ -15,7 +15,7 @@ class DenseDANN(nn.Module):
         ni = max(1,int(hidden_size*0.1))
         print(f"Homeostasis is {homeostasis}")
         self.fc1 = EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=configs.opt.use_sep_bias_gain_lrs,
-                                     use_bias=True)
+                                     train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True)
         self.fc1_output = []
         self.relu = nn.ReLU()
         self.fc5 = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=False,
