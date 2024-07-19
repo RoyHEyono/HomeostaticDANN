@@ -21,7 +21,7 @@ class DenseDANN(nn.Module):
         self.fc5 = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=False,
                                      use_bias=True)
         self.evaluation_mode = False
-        self.nonlinearity = nn.LayerNorm(hidden_size) if nonlinearity=='ln_true' else None
+        self.nonlinearity = nn.LayerNorm(hidden_size) if nonlinearity else None
         self.configs = configs
         self.register_eval = False
     

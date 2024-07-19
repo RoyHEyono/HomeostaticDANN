@@ -41,6 +41,7 @@ from danns_eg.sequential import Sequential
 #import models.kakaobrain as kakaobrain
 import danns_eg.resnets as resnets
 import danns_eg.densenet as densenets
+import danns_eg.deepdensenet as deepdensenets
 import danns_eg.predictivernn as predictivernn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
@@ -67,7 +68,7 @@ Section('train', 'Training related parameters').params(
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
-    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
+    brightness_factor=Param(float, 'random brightness jitter', default=0),
     brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 
@@ -77,20 +78,20 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(str,'norm layer type - can be None', default='ln_false'),
+    normtype=Param(int,'train model with layernorm', int=0),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=1),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    homeostasis=Param(int,'homeostasis', default=0),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
-    algorithm=Param(str, 'learning algorithm', default='SGD'),
+    algorithm=Param(str, 'learning algorithm', default='sgd'),
     exponentiated=Param(bool,'eg vs gd', default=False),
     wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
     momentum=Param(float,'momentum factor', default=0.9), #0.5 # We need a seperate momentum for the inhib component as well
-    inhib_momentum=Param(float,'inhib momentum factor', default=0.9),
+    inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
@@ -100,7 +101,7 @@ Section('opt', 'optimiser parameters').params(
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
-    wei=Param(float,'lr for Wei if dann', default=0.5), # 0.001
+    wei=Param(float,'lr for Wei if dann', default=1e-4), # 0.001
     wix=Param(float,'lr for Wix if dann', default=0.5), # 0.1
 )
 
@@ -168,7 +169,7 @@ def get_optimizer(p, model):
 
 
 
-def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
+def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
     for ims, labs in loaders['train']:
@@ -198,12 +199,12 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
             for name, param in model.named_parameters():
                 if param.requires_grad:
                     if 'Wix' in name or 'Wei' in name:
-                        if 'fc5' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                        if 'fc_output' not in name: # TEMP FIX: I'm training last layer inhib on task loss
                             if p.model.task_opt_inhib:
                                 param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                             continue
                     
-                    if 'fc5' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                    if 'fc_output' not in name: # TEMP FIX: I'm training last layer inhib on task loss
                         if p.model.homeo_opt_exc:
                             param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                         else:
@@ -220,8 +221,6 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
                     
         scaler.step(opt)
         scaler.update()
-        try: scheduler.step()
-        except NameError: pass
 
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
@@ -300,7 +299,8 @@ def train_model(p):
     return results 
 
 def build_model(p):
-    model = densenets.net(p)
+    #model = densenets.net(p)
+    model = deepdensenets.net(p)
     #model = predictivernn.net(p)
     return model
 
@@ -348,12 +348,6 @@ if __name__ == "__main__":
     EPOCHS = p.train.epochs
     opt = get_optimizer(p, model)
     iters_per_epoch = len(loaders['train'])
-    lr_schedule = np.interp(np.arange((EPOCHS+1) * iters_per_epoch),
-                            [0, 5 * iters_per_epoch, EPOCHS * iters_per_epoch],
-                            [0, 1, 0])
-    if p.model.homeostasis and not p.model.task_opt_inhib:
-        lr_schedule = lr_schedule*0 + 1 # NOTE: Temporary for homeostatic networks
-    scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
     scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
@@ -363,7 +357,7 @@ if __name__ == "__main__":
     progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch)
+        train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch)
         if epoch%1==0:
             eval_model(epoch, model, loaders, loss_fn_sum, p)          
             progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
