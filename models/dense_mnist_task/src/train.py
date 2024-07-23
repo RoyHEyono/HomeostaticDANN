@@ -84,6 +84,7 @@ Section('model', 'Model Parameters').params(
     homeostasis=Param(int,'homeostasis', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
+    homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -172,18 +173,22 @@ def get_optimizer(p, model):
 def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
-    for ims, labs in loaders['train']:
+    annealing_temp = 0
+    time_step_max =  len(loaders['train']) * 50
+    for idx_batch, (ims, labs) in enumerate(loaders['train']):
 
 
         model.train()
         opt.zero_grad(set_to_none=True)
+        
+        if p.model.homeostatic_annealing:
+          annealing_temp = utils.cosine_annealing(idx_batch, time_step_max)
+          model.set_homeostatic_temp(annealing_temp)
+
         with autocast():
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
-            
-            # TODO: We need to return the local loss from the model
-            # local_loss = model(ims).ln_mu_loss
 
             batch_correct = out.argmax(1).eq(labs).sum().cpu().item()
             batch_acc = batch_correct / ims.shape[0] * 100
@@ -199,23 +204,15 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
             for name, param in model.named_parameters():
                 if param.requires_grad:
                     if 'Wix' in name or 'Wei' in name:
-                        if 'fc_output' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                        if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
-                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss if not p.model.homeostatic_annealing else (1-annealing_temp) * loss), param, retain_graph=True)[0]
                             continue
                     
-                    if 'fc_output' not in name: # TEMP FIX: I'm training last layer inhib on task loss
-                        if p.model.homeo_opt_exc:
-                            param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                        else:
-                            param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                    else:
+                    if 'fc_output' in name:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-
-                    # if 'Wex' in name:
-                    #     param.grad = None # This locks in the homeostatic loss only
-                    
-                    
+                    else:
+                        param.grad = torch.autograd.grad(scaler.scale(loss if not p.model.homeostatic_annealing else (1-annealing_temp) * loss), param, retain_graph=True)[0]
         else:
             scaler.scale(loss).backward()
                     

@@ -28,6 +28,7 @@ from sklearn.datasets import fetch_openml
 from sklearn.decomposition import IncrementalPCA
 import gc
 import pickle as pkl
+import math
 
 def set_seed_all(seed):
     """
@@ -102,6 +103,17 @@ def load_fashionmnist():
     fashionmnist = fetch_openml('Fashion-MNIST', version=1, cache=True)
     return fashionmnist.data.to_numpy().astype('float32') / 255.0, fashionmnist.target.to_numpy().astype('int')
 
+def linear_annealing(epoch, T_max):
+    return epoch / T_max
+
+def exponential_annealing(epoch, tau):
+    return 1 - math.exp(-epoch / tau)
+
+def logarithmic_annealing(epoch, T_max):
+    return math.log(1 + epoch) / math.log(1 + T_max)
+
+def cosine_annealing(epoch, T_max):
+    return 0.5 * (1 - math.cos(math.pi * epoch / T_max))
 
 # print("Loading data")
 # X, y = load_mnist()

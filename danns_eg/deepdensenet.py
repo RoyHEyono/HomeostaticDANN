@@ -63,6 +63,10 @@ class DeepDenseDANN(nn.Module):
         for i in range(1, self.num_layers + 1):
             total_local_loss = total_local_loss + getattr(self, f'fc{i}').local_loss_value
         return total_local_loss / self.num_layers
+
+    def set_homeostatic_temp(self, lmbda):
+        for i in range(1, self.num_layers + 1):
+            getattr(self, f'fc{i}').set_lambda(lmbda)
     
     def forward(self, x):
 

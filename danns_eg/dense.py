@@ -358,6 +358,9 @@ class EiDenseLayerHomeostatic(BaseModule):
             return self.bias_pos + self.bias_neg
         else: 
             return self.bias
+
+    def set_lambda(self, lmbda):
+        self.lambda_homeo = lmbda
     
     def init_weights(self, numerator=2, ex_distribution="lognormal", k=1):
         """
@@ -426,8 +429,6 @@ class EiDenseLayerHomeostatic(BaseModule):
             for name, param in self.named_parameters():
                 if param.requires_grad:
                     if 'Wei' in name or 'Wix' in name:
-                        param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
-                    elif self.train_exc_homeo:
                         param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
         if self.affine:
