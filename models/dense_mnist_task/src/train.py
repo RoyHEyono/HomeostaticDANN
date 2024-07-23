@@ -78,7 +78,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', int=0),
+    normtype=Param(int,'train model with layernorm', default=0),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=0),

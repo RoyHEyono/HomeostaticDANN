@@ -416,11 +416,11 @@ class EiDenseLayerHomeostatic(BaseModule):
         else:
             self.h = self.z
 
+        self.local_loss_value = self.loss_fn(self.h).item()
         
         if self.homeostasis and self.training:
             
             local_loss = self.loss_fn(self.h)
-            self.local_loss_value = local_loss.item()
             
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():

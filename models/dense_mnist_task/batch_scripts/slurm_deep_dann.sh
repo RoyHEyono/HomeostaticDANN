@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/homeostatic_entropy_dann.%A.%a.out
 #SBATCH --error=sbatch_err/homeostatic_entropy_dann.%A.%a.err
-#SBATCH --job-name=homeostatic_entropy_dann_sml
+#SBATCH --job-name=nonhomeostatic_entropy_deep_dann_sml
 
 . /etc/profile
 module load anaconda/3

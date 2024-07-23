@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/homeostatic_entropy_dann.%A.%a.out
 #SBATCH --error=sbatch_err/homeostatic_entropy_dann.%A.%a.err
-#SBATCH --job-name=homeostatic_entropy_dann_sml
+#SBATCH --job-name=homeostatic_entropy_deep_dann_sml
 
 . /etc/profile
 module load anaconda/3
@@ -16,7 +16,7 @@ conda activate ffcv_eg
 # Params
 lr_arr=(0.001 0.01 0.1)
 bf_arr=(0 0.75)
-momentum_arr=(0.8 0.9 0.95) # Note: When running homeostasis, decouple this. (UNIMPLEMENTED!! TODO!!!!!! DON'T RUN THIS, THIS NEEDS WORK)
+momentum_arr=(0.8 0.9 0.95)
 lr_wei_arr=(1e-5 1e-4 1e-3)
 lr_wix_arr=(1e-2 1e-1 1)
 
@@ -56,13 +56,13 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --opt.lr=$lr \
   --opt.inhib_lrs.wei=$lr_wei \
   --opt.inhib_lrs.wix=$lr_wix \
-  --opt.inhib_momentum=$momentum \
+  --opt.inhib_momentum=0 \
   --opt.momentum=$momentum \
   --train.batch_size=$batch_size \
   --opt.lambda_homeo=$1 \
   --model.normtype=$2 \
   --model.task_opt_inhib=0 \
-  --model.homeostasis=0 \
+  --model.homeostasis=1 \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
   --exp.wandb_project=Luminosity_DeepDANN \
