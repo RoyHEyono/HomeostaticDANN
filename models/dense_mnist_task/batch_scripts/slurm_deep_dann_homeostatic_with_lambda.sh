@@ -16,7 +16,7 @@ conda activate ffcv_eg
 # Params
 lr_arr=(0.001 0.01 0.1)
 bf_arr=(0 0.75)
-homeo_lmbda_arr=(0.01 0.021544 0.046416 0.1 0.21544 0.46416 2.1544 4.6416 10 20)
+homeo_lmbda_arr=(0.01 0.021544 0.1 0.21544 0.46416 1 1.5 4.6416 10 50)
 lr_wei_arr=(1e-5 1e-4 1e-3)
 lr_wix_arr=(1e-2 1e-1 1)
 
@@ -56,7 +56,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --opt.lr=$lr \
   --opt.inhib_lrs.wei=$lr_wei \
   --opt.inhib_lrs.wix=$lr_wix \
-  --opt.inhib_momentum=0 \
+  --opt.inhib_momentum=0.9 \
   --opt.momentum=0.9 \
   --train.batch_size=$batch_size \
   --opt.lambda_homeo=$lmbda \
