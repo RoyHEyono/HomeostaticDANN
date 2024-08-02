@@ -56,8 +56,8 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --opt.lr=$lr \
   --opt.inhib_lrs.wei=$lr_wei \
   --opt.inhib_lrs.wix=$lr_wix \
-  --opt.inhib_momentum=0.9 \
-  --opt.momentum=0.9 \
+  --opt.inhib_momentum=0 \
+  --opt.momentum=0 \
   --train.batch_size=$batch_size \
   --opt.lambda_homeo=$lmbda \
   --model.normtype=$1 \
@@ -65,6 +65,6 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.homeostasis=1 \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
-  --exp.wandb_project=Luminosity_DeepDANN \
+  --exp.wandb_project=Luminosity_DeepDANN_NoMomentum \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1

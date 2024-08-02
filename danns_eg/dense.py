@@ -259,11 +259,18 @@ class EiDenseLayer(BaseModule):
 
 
 class LocalLossMean(nn.Module):
-        def __init__(self):
+        def __init__(self, hidden_size, nonlinearity_loss=False):
             super(LocalLossMean, self).__init__()
+            self.nonlinearity = nn.LayerNorm(hidden_size)
+            self.nonlinearity_loss = nonlinearity_loss
+            self.criterion = nn.MSELoss()
 
         def forward(self, inputs):
 
+            if self.nonlinearity_loss:
+                loss = self.criterion(self.nonlinearity(inputs), inputs)
+                return loss.mean()
+            
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
 
@@ -272,11 +279,9 @@ class LocalLossMean(nn.Module):
             target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
 
             # print(f"mean: {torch.mean(mean)}, var: {torch.mean(mean_squared - mean**2)}")
-
-            criterion = nn.MSELoss()
-
+            
             # Calculate the loss based on the L2 distance from the target values
-            loss = criterion(mean, target_mean)  + criterion(mean_squared, target_mean_squared)
+            loss = self.criterion(mean, target_mean)  + self.criterion(mean_squared, target_mean_squared)
             #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
             
             return loss.mean()
@@ -301,7 +306,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.ne = ne
         self.homeostasis = homeostasis
         self.lambda_homeo = lambda_homeo
-        self.loss_fn = LocalLossMean()
+        self.loss_fn = LocalLossMean(self.ne, nonlinearity_loss=True)
         self.affine = affine
         self.train_exc_homeo = train_exc_homeo
         if isinstance(ni, float): self.ni = int(ne*ni)
@@ -414,12 +419,15 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.z = self.hex - self.hei # Temporary solution
 
         if self.use_bias: self.z = self.z + self.b.T
+
+        self.local_loss_value = self.loss_fn(self.z).item()
+
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
 
-        self.local_loss_value = self.loss_fn(self.h).item()
+        
         
         if self.homeostasis and self.training:
             
