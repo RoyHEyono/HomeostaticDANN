@@ -261,7 +261,7 @@ class EiDenseLayer(BaseModule):
 class LocalLossMean(nn.Module):
         def __init__(self, hidden_size, nonlinearity_loss=False):
             super(LocalLossMean, self).__init__()
-            self.nonlinearity = nn.LayerNorm(hidden_size)
+            self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False)
             self.nonlinearity_loss = nonlinearity_loss
             self.criterion = nn.MSELoss()
 
