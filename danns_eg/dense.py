@@ -264,12 +264,11 @@ class LocalLossMean(nn.Module):
             self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False)
             self.nonlinearity_loss = nonlinearity_loss
             self.criterion = nn.MSELoss()
-
+            
         def forward(self, inputs):
 
             if self.nonlinearity_loss:
-                loss = self.criterion(self.nonlinearity(inputs), inputs)
-                return loss.mean()
+                return self.criterion(inputs, self.nonlinearity(inputs))
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)

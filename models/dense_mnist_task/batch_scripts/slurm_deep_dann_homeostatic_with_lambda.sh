@@ -16,7 +16,8 @@ conda activate ffcv_eg
 # Params
 lr_arr=(0.001 0.01 0.1)
 bf_arr=(0 0.75)
-homeo_lmbda_arr=(0.01 0.021544 0.1 0.21544 0.46416 1 1.5 4.6416 10 50)
+# homeo_lmbda_arr=(0.01 0.021544 0.1 0.21544 0.46416 1 1.5 4.6416 10 50)
+homeo_lmbda_arr=(100 150 200 300 500 1000 1500 3000 5000 10000)
 lr_wei_arr=(1e-5 1e-4 1e-3)
 lr_wix_arr=(1e-2 1e-1 1)
 

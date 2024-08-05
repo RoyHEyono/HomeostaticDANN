@@ -81,8 +81,8 @@ Section('model', 'Model Parameters').params(
     normtype=Param(int,'train model with layernorm', default=0),
     is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=0),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
+    homeostasis=Param(int,'homeostasis', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     #input_shape=Param(tuple,'optional, none batch' 
@@ -98,7 +98,7 @@ Section('opt', 'optimiser parameters').params(
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
@@ -206,13 +206,10 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
                     if 'Wix' in name or 'Wei' in name:
                         if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
-                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss if not p.model.homeostatic_annealing else (1-annealing_temp) * loss), param, retain_graph=True)[0]
+                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                             continue
                     
-                    if 'fc_output' in name:
-                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                    else:
-                        param.grad = torch.autograd.grad(scaler.scale(loss if not p.model.homeostatic_annealing else (1-annealing_temp) * loss), param, retain_graph=True)[0]
+                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
         else:
             scaler.scale(loss).backward()
                     
