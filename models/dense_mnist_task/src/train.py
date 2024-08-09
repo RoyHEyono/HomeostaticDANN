@@ -175,15 +175,13 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     epoch_correct, total_ims = 0, 0
     annealing_temp = 0
     time_step_max =  len(loaders['train']) * 50
+    idx_batch_count = len(loaders['train']) * epoch
     for idx_batch, (ims, labs) in enumerate(loaders['train']):
 
 
         model.train()
         opt.zero_grad(set_to_none=True)
-        
-        if p.model.homeostatic_annealing:
-          annealing_temp = utils.cosine_annealing(idx_batch, time_step_max)
-          model.set_homeostatic_temp(annealing_temp)
+          
 
         with autocast():
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
@@ -194,6 +192,11 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
             batch_acc = batch_correct / ims.shape[0] * 100
             epoch_correct += batch_correct
             total_ims += ims.shape[0]
+        
+        if p.model.homeostatic_annealing:
+            annealing_temp = utils.cosine_annealing(idx_batch_count, time_step_max)
+            model.set_homeostatic_temp(1-annealing_temp)
+            loss = annealing_temp * loss
 
         if p.exp.use_wandb: 
             wandb.log({"update_acc":batch_acc,
@@ -215,6 +218,7 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
                     
         scaler.step(opt)
         scaler.update()
+        idx_batch_count = idx_batch_count + 1
 
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
