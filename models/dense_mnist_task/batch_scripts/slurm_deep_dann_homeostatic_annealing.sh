@@ -21,24 +21,24 @@ lr_wix_arr=(1e-2 1e-1 1)
 
 batch_size=32
 
-len1=${#lr_arr[@]} # 3
-len2=${#bf_arr[@]} # 2
-len3=${#lr_wei_arr[@]} # 3
-len4=${#lr_wix_arr[@]} # 3
+# Calculate lengths and indices
+len1=${#lr_arr[@]}   # 3
+len2=${#bf_arr[@]}   # 2
+len3=${#lr_wei_arr[@]}  # 3
+len4=${#lr_wix_arr[@]}  # 3
 
-len1234=$((len1*len2*len3*len4)) # 54
-idx4=$((SLURM_ARRAY_TASK_ID/len1234)) # 0, 1, 2
-idx1234=$((SLURM_ARRAY_TASK_ID%len1234)) # 0, 1, .... 53
+# Calculate total number of combinations
+len123=$((len1*len2*len3))   # 18
+idx4=$((SLURM_ARRAY_TASK_ID/len123)) # 0, 1, 2
+idx123=$((SLURM_ARRAY_TASK_ID%len123)) # 0, 1, ... 17
 
-len123=$((len1*len2*len3)) # 18
-idx3=$((idx1234/len123)) # 0, 1, 2
-idx123=$((idx1234%len123)) # 0, 1, ... 17
-
-len12=$((len1*len2)) # 6
-idx2=$((idx123/len12)) # 0, 1
+len12=$((len1*len2))  # 6
+idx3=$((idx123/len12)) # 0, 1, 2
 idx12=$((idx123%len12)) # 0, 1, ... 5
 
-idx1=$((idx12%len1)) # 0, 1, 2
+idx2=$((idx12/len1))  # 0, 1
+idx1=$((idx12%len1))  # 0, 1, 2
+
 
 lr=${lr_arr[$idx1]}
 bf=${bf_arr[$idx2]}

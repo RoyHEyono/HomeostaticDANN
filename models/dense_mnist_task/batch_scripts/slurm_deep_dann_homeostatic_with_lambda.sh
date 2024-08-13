@@ -65,7 +65,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.task_opt_inhib=$2 \
   --model.homeostasis=1 \
   --model.homeo_opt_exc=0 \
-  --opt.use_sep_bias_gain_lrs=0 \
+  --opt.use_sep_bias_gain_lrs=1 \
   --exp.wandb_project=Luminosity_DeepDANN_NoMomentum \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1

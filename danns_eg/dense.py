@@ -426,7 +426,8 @@ class EiDenseLayerHomeostatic(BaseModule):
         else:
             self.h = self.z
 
-        
+        if self.affine:
+            self.h = self.gamma * self.h + self.beta
         
         if self.homeostasis and self.training:
             
@@ -435,11 +436,10 @@ class EiDenseLayerHomeostatic(BaseModule):
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():
                 if param.requires_grad:
-                    if 'Wei' in name or 'Wix' in name:
+                    if 'Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name:
                         param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
-        if self.affine:
-            self.h = self.gamma * self.h + self.beta
+        
 
         return self.h
 

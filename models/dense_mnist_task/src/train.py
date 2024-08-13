@@ -206,7 +206,7 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    if 'Wix' in name or 'Wei' in name:
+                    if 'Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name:
                         if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
                                 param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
