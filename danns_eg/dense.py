@@ -419,6 +419,9 @@ class EiDenseLayerHomeostatic(BaseModule):
 
         if self.use_bias: self.z = self.z + self.b.T
 
+        if self.affine:
+            self.z = self.gamma * self.z + self.beta
+
         self.local_loss_value = self.loss_fn(self.z).item()
 
         if self.nonlinearity is not None:
@@ -426,8 +429,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         else:
             self.h = self.z
 
-        if self.affine:
-            self.h = self.gamma * self.h + self.beta
+        
         
         if self.homeostasis and self.training:
             
@@ -436,7 +438,9 @@ class EiDenseLayerHomeostatic(BaseModule):
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():
                 if param.requires_grad:
-                    if 'Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name:
+                    if 'gamma' in name or 'beta' in name:
+                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+                    if 'Wix' in name or 'Wei' in name:
                         param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
         
         

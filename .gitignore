@@ -136,3 +136,5 @@ dmypy.json
 #sbatch output
 models/dense_mnist_task/batch_scripts/sbatch_err
 models/dense_mnist_task/batch_scripts/sbatch_out
+models/dense_mnist_task/batch_scripts/exhaustive_search/sbatch_out
+models/dense_mnist_task/batch_scripts/exhaustive_search/sbatch_err
