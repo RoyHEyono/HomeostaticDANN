@@ -85,15 +85,15 @@ def net(p:dict):
 
     input_dim = 784
     num_class = 10
-    width=800
+    width=p.model.hidden_layer_width
 
     modules = []
     
     if p.model.is_dann:
         if p.model.homeostasis:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=p.model.hidden_layers, homeostasis=p.model.homeostasis, nonlinearity=None)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=2, homeostasis=p.model.homeostasis, nonlinearity=None)
         else:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=p.model.hidden_layers, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=2, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
         return model
         
     

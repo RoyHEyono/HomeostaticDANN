@@ -85,7 +85,7 @@ Section('model', 'Model Parameters').params(
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
-    hidden_layers=Param(int,'number of hidden layers', default=2),
+    hidden_layer_width=Param(int,'number of hidden layers', default=800),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -96,7 +96,7 @@ Section('opt', 'optimiser parameters').params(
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
-    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=1),
+    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
     lambda_homeo=Param(float, 'lambda homeostasis', default=1),

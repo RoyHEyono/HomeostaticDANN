@@ -45,7 +45,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.normtype=$normtype \
   --model.task_opt_inhib=1 \
   --model.homeostasis=$homeostasis \
-  --model.hidden_layers=$hidden_layer_width \
+  --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
   --exp.wandb_project=Luminosity_DeepDANN_ExhaustiveSearch \

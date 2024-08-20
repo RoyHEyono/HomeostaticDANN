@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-15  # Adjust based on the number of grid configurations
+#SBATCH --array=0-3  # 4 grid configurations: 0, 1, 2, 3
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
-#SBATCH --time=1:00:00
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/grid_config_no_homeostasis_%A_%a.out
 #SBATCH --error=sbatch_err/grid_config_no_homeostasis_%A_%a.err
@@ -21,13 +21,12 @@ normtypes=(0 1)
 
 # Calculate grid parameters based on SLURM_ARRAY_TASK_ID
 num_brightness_factors=${#brightness_factors[@]}
-num_homeostasis=${#homeostasis_values[@]}
 num_normtypes=${#normtypes[@]}
 
 grid_index=$SLURM_ARRAY_TASK_ID
 
 brightness_factor_idx=$((grid_index % num_brightness_factors))
-normtype_idx=$(( (grid_index / num_brightness_factors) % num_normtypes ))
+normtype_idx=$((grid_index / num_brightness_factors))
 
 brightness_factor=${brightness_factors[$brightness_factor_idx]}
 normtype=${normtypes[$normtype_idx]}
