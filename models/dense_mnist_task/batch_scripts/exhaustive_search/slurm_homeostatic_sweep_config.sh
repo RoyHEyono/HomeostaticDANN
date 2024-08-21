@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-15  # Adjust based on the number of grid configurations
+#SBATCH --array=0-7  # Adjust based on the number of grid configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB

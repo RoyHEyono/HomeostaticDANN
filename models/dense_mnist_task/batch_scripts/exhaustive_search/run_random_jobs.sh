@@ -3,7 +3,7 @@
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
-#SBATCH --time=1:00:00
+#SBATCH --time=1:30:00
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/random_config_%A_%a.out
 #SBATCH --error=sbatch_err/random_config_%A_%a.err
