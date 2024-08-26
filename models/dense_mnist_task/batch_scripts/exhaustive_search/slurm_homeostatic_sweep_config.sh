@@ -16,7 +16,7 @@ conda activate ffcv_eg
 
 # Grid parameters
 brightness_factors=(0 0.75)
-lambda_homeos=(1 10 100 1000)  # Included in this script
+lambda_homeos=(150 300 400 500)  # Included in this script
 homeostasis_values=(1)
 normtypes=(0)  # Fixed to 0
 

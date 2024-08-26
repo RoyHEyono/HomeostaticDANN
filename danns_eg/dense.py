@@ -264,11 +264,15 @@ class LocalLossMean(nn.Module):
             self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False)
             self.nonlinearity_loss = nonlinearity_loss
             self.criterion = nn.MSELoss()
+            self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
             
         def forward(self, inputs):
 
             if self.nonlinearity_loss:
-                return self.criterion(inputs, self.nonlinearity(inputs))
+                kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
+                cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
+                mse = self.criterion(inputs, self.nonlinearity(inputs))
+                return mse + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
@@ -278,6 +282,7 @@ class LocalLossMean(nn.Module):
             target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
 
             # print(f"mean: {torch.mean(mean)}, var: {torch.mean(mean_squared - mean**2)}")
+            
             
             # Calculate the loss based on the L2 distance from the target values
             loss = self.criterion(mean, target_mean)  + self.criterion(mean_squared, target_mean_squared)
