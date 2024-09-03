@@ -264,15 +264,15 @@ class LocalLossMean(nn.Module):
             self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False)
             self.nonlinearity_loss = nonlinearity_loss
             self.criterion = nn.MSELoss()
-            self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
+            #self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
             
         def forward(self, inputs):
 
             if self.nonlinearity_loss:
-                kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
-                cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
+                #kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
+                #cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
                 mse = self.criterion(inputs, self.nonlinearity(inputs))
-                return mse + kl_loss_val + cosine_loss
+                return mse # + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)

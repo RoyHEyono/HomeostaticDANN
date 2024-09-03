@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-49  # 50 random configurations
+#SBATCH --array=0-99  # 100 random configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -48,6 +48,6 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
-  --exp.wandb_project=Luminosity_DeepDANN_ExhaustiveSearch \
+  --exp.wandb_project=Luminosity_DeepDANN_ExhaustiveSearch_StrongExplicitLoss \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1

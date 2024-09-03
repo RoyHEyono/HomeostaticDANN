@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-7  # Adjust based on the number of grid configurations
+#SBATCH --array=0-1  # Adjust based on the number of grid configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -16,7 +16,7 @@ conda activate ffcv_eg
 
 # Grid parameters
 brightness_factors=(0 0.75)
-lambda_homeos=(150 300 400 500)  # Included in this script
+lambda_homeos=(300)  # Included in this script
 homeostasis_values=(1)
 normtypes=(0)  # Fixed to 0
 
