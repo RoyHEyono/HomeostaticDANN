@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-99  # 100 random configurations
+#SBATCH --array=0-9  # 10 random configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/random_config_%A_%a.out
 #SBATCH --error=sbatch_err/random_config_%A_%a.err
-#SBATCH --job-name=homeostatic_sweep_config_run
+#SBATCH --job-name=homeostatic_implicit_sweep_config_run
 
 # Load environment
 . /etc/profile

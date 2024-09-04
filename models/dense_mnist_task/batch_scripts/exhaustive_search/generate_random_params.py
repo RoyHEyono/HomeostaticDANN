@@ -2,7 +2,7 @@ import numpy as np
 import json
 
 # Define ranges for random parameters (log scale!)
-lr_min, lr_max = -3, -1# 1e-3, 1e-1
+lr_min, lr_max = -3, -2# 1e-3, 1e-1
 lr_wei_min, lr_wei_max = -5, -2 #1e-5, 1e-2
 lr_wix_min, lr_wix_max = -2, 0 #1e-2, 1e0
 hidden_layer_width_min, hidden_layer_width_max = 100, 500

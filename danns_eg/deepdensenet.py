@@ -48,8 +48,9 @@ class DeepDenseDANN(nn.Module):
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_inh_mu":mu_inh, f"train_{layername}_inh_var":var_inh})
         return forward_hook
 
-    def register_hooks(self):
+    
 
+    def register_hooks(self):
         for i in range(1, self.num_layers + 1):
             setattr(self, f'fc{i}_hook', getattr(self, f'fc{i}').register_forward_hook(self.list_forward_hook(layername=f'fc{i}')))
 
