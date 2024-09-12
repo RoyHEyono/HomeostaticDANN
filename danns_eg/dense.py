@@ -266,12 +266,12 @@ class LocalLossMean(nn.Module):
             self.criterion = nn.MSELoss()
             #self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
             
-        def forward(self, inputs):
+        def forward(self, inputs, lambda_mean=1, lambda_var=1):
 
-            if self.nonlinearity_loss:
+            if not self.nonlinearity_loss:
                 #kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
                 #cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
-                mse = self.criterion(inputs, self.nonlinearity(inputs))
+                mse = lambda_mean * self.criterion(inputs, self.nonlinearity(inputs))
                 return mse # + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
@@ -285,7 +285,7 @@ class LocalLossMean(nn.Module):
             
             
             # Calculate the loss based on the L2 distance from the target values
-            loss = self.criterion(mean, target_mean)  + self.criterion(mean_squared, target_mean_squared)
+            loss = lambda_mean * self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared)
             #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
             
             return loss.mean()
@@ -295,8 +295,8 @@ class EiDenseLayerHomeostatic(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, affine=False, train_exc_homeo=False,
-                 init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+    def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, lambda_var=1, affine=False, train_exc_homeo=False,
+                 implicit_loss=False, init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
         ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
@@ -310,7 +310,8 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.ne = ne
         self.homeostasis = homeostasis
         self.lambda_homeo = lambda_homeo
-        self.loss_fn = LocalLossMean(self.ne, nonlinearity_loss=True)
+        self.lambda_var = lambda_var
+        self.loss_fn = LocalLossMean(self.ne, nonlinearity_loss=implicit_loss)
         self.affine = affine
         self.train_exc_homeo = train_exc_homeo
         if isinstance(ni, float): self.ni = int(ne*ni)
@@ -427,7 +428,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         if self.affine:
             self.z = self.gamma * self.z + self.beta
 
-        self.local_loss_value = self.loss_fn(self.z).item()
+        self.local_loss_value = self.loss_fn(self.z, self.lambda_homeo, self.lambda_var).item()
 
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
@@ -438,15 +439,16 @@ class EiDenseLayerHomeostatic(BaseModule):
         
         if self.homeostasis and self.training:
             
-            local_loss = self.loss_fn(self.h)
+            local_loss = self.loss_fn(self.h, self.lambda_homeo, self.lambda_var)
             
             # Compute gradients for specific parameters
             for name, param in self.named_parameters():
                 if param.requires_grad:
                     if 'gamma' in name or 'beta' in name:
-                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
+                        local_loss_affine = self.loss_fn(self.h)
+                        param.grad = torch.autograd.grad(local_loss_affine, param, retain_graph=True)[0]
                     if 'Wix' in name or 'Wei' in name:
-                        param.grad = torch.autograd.grad(local_loss * self.lambda_homeo, param, retain_graph=True)[0]
+                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
         
         
 

@@ -17,7 +17,8 @@ conda activate ffcv_eg
 # Retrieve grid configuration parameters
 grid_index=$GRID_INDEX
 brightness_factor=$BRIGHTNESS_FACTOR
-lambda_homeo=$LAMBDA_HOMEOS
+lambda_homeo=$LAMBDA_FIRST
+lambda_var=$LAMBDA_SECOND
 homeostasis=$HOMEOSTASIS
 normtype=$NORMTYPE
 
@@ -42,9 +43,11 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --opt.momentum=0 \
   --train.batch_size=32 \
   --opt.lambda_homeo=$lambda_homeo \
+  --opt.lambda_homeo_var=$lambda_var \
   --model.normtype=$normtype \
   --model.task_opt_inhib=1 \
   --model.homeostasis=$homeostasis \
+  --model.implicit_homeostatic_loss=1 \
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \

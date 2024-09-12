@@ -15,17 +15,17 @@ class DeepDenseDANN(nn.Module):
         ni = max(1,int(hidden_size*0.1))
         self.num_layers = num_layers
 
-        setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=configs.opt.use_sep_bias_gain_lrs,
-                                     train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True))
+        setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+                                     train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss))
 
         # Hidden layers
         for i in range(2, self.num_layers + 1):
-            setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=configs.opt.use_sep_bias_gain_lrs,
-                                     train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True))
+            setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+                                     train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss))
                                      
         
         self.relu = nn.ReLU()
-        setattr(self, f'fc_output', EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, affine=False,
+        setattr(self, f'fc_output', EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=False,
                                      use_bias=True))
         self.evaluation_mode = False
         self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
