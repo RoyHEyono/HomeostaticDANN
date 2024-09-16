@@ -1,5 +1,0 @@
-XNNPACK is enabled:  True 
-
-We're at: /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/batch_scripts/ood_runs
-Best train accuracy: 81.71
-Best test accuracy: 80.24
