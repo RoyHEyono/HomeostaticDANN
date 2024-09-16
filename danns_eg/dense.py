@@ -285,7 +285,7 @@ class LocalLossMean(nn.Module):
             
             
             # Calculate the loss based on the L2 distance from the target values
-            loss = lambda_mean * self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared)
+            loss = lambda_mean * ( self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared))
             #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
             
             return loss.mean()

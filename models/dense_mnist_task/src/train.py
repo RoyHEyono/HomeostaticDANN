@@ -16,6 +16,7 @@ from tqdm import tqdm
 import argparse
 from fastargs import Section, Param, get_current_config
 from fastargs.decorators import param
+import uuid
 
 import matplotlib.pyplot as plt
 import wandb
@@ -79,7 +80,7 @@ Section('data', 'dataset related parameters').params(
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
     normtype=Param(int,'train model with layernorm', default=1),
-    is_dann=Param(bool,'network is a dan network', default=False),  # This is a flag to indicate if the network is a dann network
+    is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
@@ -125,8 +126,8 @@ Section('exp', 'General experiment details').params(
     wandb_entity=Param(str, 'team under which to log runs', default=""),
     wandb_tag=Param(str, 'tag under which to log runs', default="default"),
     save_results=Param(bool,'save_results', default=False),
-    save_model=Param(bool, 'save model', default=False),
-    name=Param(str, 'name of the run', default=""),
+    save_model=Param(int, 'save model', default=0),
+    name=Param(str, 'name of the run', default="dann_project"),
 ) #TODO: Add wandb group param
 
 
@@ -371,6 +372,14 @@ if __name__ == "__main__":
         run.finish()
 
     model.remove_hooks()
+
+    if p.exp.save_model:
+        save_dir = f'/network/scratch/r/roy.eyono/{p.exp.name}_{p.train.dataset}_{p.data.brightness_factor}'
+        os.makedirs(save_dir, exist_ok=True)
+        best_axc=max(results["test_accs"])
+        model_name = str(uuid.uuid4()) + f'_{best_axc}.pth'
+        model_path = os.path.join(save_dir, model_name)
+        torch.save(model.state_dict(), model_path)
 
     # Print best test and training accuracy
     print("Best train accuracy: {:.2f}".format(max(results["train_accs"])))

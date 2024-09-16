@@ -31,7 +31,7 @@ hidden_layer_width=$(echo $random_params | python -c "import sys, json; config=j
 # Run your training script with the specific parameters
 python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py \
   --data.brightness_factor=$brightness_factor \
-  --model.is_dann=False \
+  --model.is_dann=0 \
   --train.dataset='fashionmnist' \
   --opt.use_sep_inhib_lrs=1 \
   --opt.lr=$lr \

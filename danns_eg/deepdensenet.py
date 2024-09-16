@@ -10,7 +10,7 @@ import wandb
 
 
 class DeepDenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, is_dann=True):
+    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, is_dann=1):
         super(DeepDenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         self.num_layers = num_layers
