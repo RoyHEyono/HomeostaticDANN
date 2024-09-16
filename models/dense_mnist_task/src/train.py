@@ -68,7 +68,7 @@ Section('train', 'Training related parameters').params(
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
-    brightness_factor=Param(float, 'random brightness jitter', default=0),
+    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
     brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 
@@ -78,8 +78,8 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=0),
-    is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
+    normtype=Param(int,'train model with layernorm', default=1),
+    is_dann=Param(bool,'network is a dan network', default=False),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),

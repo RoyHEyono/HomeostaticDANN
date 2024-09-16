@@ -1,0 +1,46 @@
+XNNPACK is enabled:  True 
+
+We're at: /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/batch_scripts/ood_runs
+Best train accuracy: 78.48
+Best test accuracy: 77.91
+
+======== GPU REPORT ========
+
+==============NVSMI LOG==============
+
+Timestamp                                 : Fri Sep 13 00:10:18 2024
+Driver Version                            : 535.183.06
+CUDA Version                              : 12.2
+
+Attached GPUs                             : 1
+GPU 00000000:C3:00.0
+    Accounting Mode                       : Enabled
+    Accounting Mode Buffer Size           : 4000
+    Accounted Processes
+        Process ID                        : 2649958
+            GPU Utilization               : 6 %
+            Memory Utilization            : 0 %
+            Max memory usage              : 272 MiB
+            Time                          : 2852713 ms
+            Is Running                    : 0
+
+Fri Sep 13 00:10:18 2024       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.183.06             Driver Version: 535.183.06   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  Quadro RTX 8000                On  | 00000000:C3:00.0 Off |                    0 |
+| 33%   36C    P2              71W / 260W |      1MiB / 46080MiB |      4%      Default |
+|                                         |                      |                  N/A |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
