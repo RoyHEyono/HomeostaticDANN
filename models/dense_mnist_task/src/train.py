@@ -41,7 +41,6 @@ import danns_eg.utils as train_utils
 from danns_eg.sequential import Sequential
 #import models.kakaobrain as kakaobrain
 import danns_eg.resnets as resnets
-import danns_eg.densenet as densenets
 import danns_eg.deepdensenet as deepdensenets
 import danns_eg.predictivernn as predictivernn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
@@ -304,7 +303,6 @@ def train_model(p):
     return results 
 
 def build_model(p):
-    #model = densenets.net(p)
     model = deepdensenets.net(p)
     #model = predictivernn.net(p)
     return model
