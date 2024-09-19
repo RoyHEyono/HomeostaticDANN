@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-9  # 10 random configurations
+#SBATCH --array=0-199  # 200 random configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -16,7 +16,6 @@ conda activate ffcv_eg
 
 # Retrieve grid configuration parameters
 grid_index=$GRID_INDEX
-brightness_factor=$BRIGHTNESS_FACTOR
 homeostasis=$HOMEOSTASIS
 normtype=$NORMTYPE
 
@@ -30,10 +29,11 @@ lr_wix=$(echo $random_params | python -c "import sys, json; config=json.load(sys
 hidden_layer_width=$(echo $random_params | python -c "import sys, json; config=json.load(sys.stdin); print(config['hidden_layer_width'])")
 lambda1=$(echo $random_params | python -c "import sys, json; config=json.load(sys.stdin); print(config['lambda1'])")
 lambda2=$(echo $random_params | python -c "import sys, json; config=json.load(sys.stdin); print(config['lambda2'])")
+bf=$(echo $random_params | python -c "import sys, json; config=json.load(sys.stdin); print(config['bf'])")
 
 # Run your training script with the specific parameters
 python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py \
-  --data.brightness_factor=$brightness_factor \
+  --data.brightness_factor=$bf \
   --train.dataset='fashionmnist' \
   --opt.use_sep_inhib_lrs=1 \
   --opt.lr=$lr \

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-1
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -15,22 +14,22 @@ module load anaconda/3
 conda activate ffcv_eg
 
 # Grid parameters
-brightness_factors=(0 0.75)
+# brightness_factors=(0 0.75)
 homeostasis_values=(1)  # Fixed to 1
 normtypes=(0)  # Fixed to 0
 
 # Calculate grid parameters based on SLURM_ARRAY_TASK_ID
-num_brightness_factors=${#brightness_factors[@]}
+# num_brightness_factors=${#brightness_factors[@]}
 
 grid_index=$SLURM_ARRAY_TASK_ID
 
-brightness_factor_idx=$SLURM_ARRAY_TASK_ID
+# brightness_factor_idx=$SLURM_ARRAY_TASK_ID
 
-brightness_factor=${brightness_factors[$brightness_factor_idx]}
+# brightness_factor=${brightness_factors[$brightness_factor_idx]}
 
 # Export the selected parameters as environment variables
 export GRID_INDEX=$grid_index
-export BRIGHTNESS_FACTOR=$brightness_factor
+# export BRIGHTNESS_FACTOR=$brightness_factor
 export HOMEOSTASIS=1  # Fixed to 1
 export NORMTYPE=0  # Fixed to 0
 
