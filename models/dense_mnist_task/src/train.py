@@ -86,7 +86,7 @@ Section('model', 'Model Parameters').params(
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
-    hidden_layer_width=Param(int,'number of hidden layers', default=800),
+    hidden_layer_width=Param(int,'number of hidden layers', default=500),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(

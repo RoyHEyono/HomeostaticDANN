@@ -62,8 +62,6 @@ class DeepDenseDANN(nn.Module):
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_inh_mu":mu_inh, f"train_{layername}_inh_var":var_inh})
         return forward_hook
 
-    
-
     def register_hooks(self):
         if self.is_dann:
             for i in range(1, self.num_layers + 1):
@@ -89,14 +87,13 @@ class DeepDenseDANN(nn.Module):
             getattr(self, f'fc{i}').set_lambda(lmbda)
     
     def forward(self, x):
-
         for i in range(1, self.num_layers + 1):
-            x = getattr(self, f'fc{i}').forward(x)
+            x = getattr(self, f'fc{i}')(x)
             if self.nonlinearity is not None:
                 x = self.nonlinearity(x)
             x = self.relu(x)
 
-        x = getattr(self, f'fc_output').forward(x)
+        x = getattr(self, f'fc_output')(x)
         return x
 
 def net(p:dict):
