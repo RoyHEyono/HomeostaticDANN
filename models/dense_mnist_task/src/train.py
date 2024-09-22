@@ -376,6 +376,8 @@ if __name__ == "__main__":
         os.makedirs(save_dir, exist_ok=True)
         best_axc=max(results["test_accs"])
         model_name = str(uuid.uuid4()) + f'_{best_axc}.pth'
+        if p.exp.use_wandb:
+            model_name = f'{run.name}.pth'
         model_path = os.path.join(save_dir, model_name)
         torch.save(model.state_dict(), model_path)
 

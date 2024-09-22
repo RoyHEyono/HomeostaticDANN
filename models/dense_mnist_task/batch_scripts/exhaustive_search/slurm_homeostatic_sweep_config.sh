@@ -28,16 +28,13 @@ num_normtypes=${#normtypes[@]}
 
 grid_index=$SLURM_ARRAY_TASK_ID
 
-brightness_factor_idx=$((grid_index % num_brightness_factors))
-lambda_homeo_idx=$(( (grid_index / num_brightness_factors) % num_lambda_homeos ))
 
-brightness_factor=${brightness_factors[$brightness_factor_idx]}
-lambda_homeo=${lambda_homeos[$lambda_homeo_idx]}
+brightness_factor=${brightness_factors[$grid_index]}
 
 # Load the pre-generated random configurations
 export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
-export LAMBDA_HOMEOS=$lambda_homeo
+export LAMBDA_HOMEOS=300
 export HOMEOSTASIS=1  # Fixed to 1
 export NORMTYPE=0  # Fixed to 0
 

@@ -3,7 +3,7 @@
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
-#SBATCH --time=1:30:00
+#SBATCH --time=2:30:00
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/random_config_%A_%a.out
 #SBATCH --error=sbatch_err/random_config_%A_%a.err
@@ -48,9 +48,9 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
-  --exp.wandb_project=Luminosity_DeepDANN_ExhaustiveSearch \
+  --exp.wandb_project=Luminosity_NAISYS \
   --model.implicit_homeostatic_loss=0 \
   --exp.wandb_entity=project_danns \
-  --exp.use_wandb=0 \
+  --exp.use_wandb=1 \
   --exp.name='explicit_loss_models' \
   --exp.save_model=1
