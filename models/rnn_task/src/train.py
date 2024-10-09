@@ -23,6 +23,7 @@ from pathlib import Path
 import json
 from fastargs.dict_utils import NestedNamespace
 import pickle as pkl
+import uuid
 
 
 import torch 
@@ -39,7 +40,6 @@ import danns_eg.utils as train_utils
 from danns_eg.sequential import Sequential
 #import models.kakaobrain as kakaobrain
 import danns_eg.resnets as resnets
-import danns_eg.densenet as densenets
 import danns_eg.predictivernn as predictivernn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
@@ -57,44 +57,53 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='fashion'),
+    dataset=Param(str, 'dataset', default='fashionmnist'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
-    use_testset=Param(bool, 'use testset as val set', default=False),
+    use_testset=Param(bool, 'use testset as val set', default=True),
     )
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
+    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
+    brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
+    contrast_jitter=Param(bool, 'contrast jitter', default=False),
+
 ) 
 # note this should be false for danns bec i input could be positive if not
 # we require x to be non-negative
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(str,'norm layer type - can be None', default='ln_false'),
-    is_dann=Param(bool,'network is a dan network', default=True),  # This is a flag to indicate if the network is a dann network
+    normtype=Param(int,'train model with layernorm', default=1),
+    is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(bool,'homeostasis', default=False),
+    homeostasis=Param(int,'homeostasis', default=1),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
+    homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
+    hidden_layer_width=Param(int,'number of hidden layers', default=500),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
-    algorithm=Param(str, 'learning algorithm', default='SGD'),
+    algorithm=Param(str, 'learning algorithm', default='sgd'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=0.001), #0.001 # Weight decay is very bad for inhibition
-    momentum=Param(float,'momentum factor', default=0.5), #0.5 # We need a seperate momentum for the inhib component as well
+    wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
+    momentum=Param(float,'momentum factor', default=0.9), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
-    use_sep_inhib_lrs=Param(bool,' ', default=True),
-    use_sep_bias_gain_lrs=Param(bool,' ', default=False),
+    use_sep_inhib_lrs=Param(int,' ', default=1),
+    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1),
-    lambda_var=Param(float, 'lambda homeostasis', default=1),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1.5),
+    lambda_homeo_var=Param(float, 'lambda homeostasis', default=2),
 )
 
-Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==True).params(
-    wei=Param(float,'lr for Wei if dann', default=0.5), # 0.001
+Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
+    wei=Param(float,'lr for Wei if dann', default=1e-4), # 0.001
     wix=Param(float,'lr for Wix if dann', default=0.5), # 0.1
 )
 
@@ -109,13 +118,13 @@ Section('exp', 'General experiment details').params(
     use_autocast=Param(bool, 'autocast fp16', default=True),
     log_interval=Param(int, 'log-interval in terms of epochs', default=1),
     data_dir=Param(str, 'data dir - if passed will not write ffcv', default=''),
-    use_wandb=Param(bool, 'flag to use wandb', default=False),
-    wandb_project=Param(str, 'project under which to log runs', default=""),
+    use_wandb=Param(int, 'flag to use wandb', default=0),
+    wandb_project=Param(str, 'project under which to log runs', default="Test"),
     wandb_entity=Param(str, 'team under which to log runs', default=""),
     wandb_tag=Param(str, 'tag under which to log runs', default="default"),
     save_results=Param(bool,'save_results', default=False),
-    save_model=Param(bool, 'save model', default=False),
-    name=Param(str, 'name of the run', default=""),
+    save_model=Param(int, 'save model', default=0),
+    name=Param(str, 'name of the run', default="dann_project"),
 ) #TODO: Add wandb group param
 
 
@@ -161,7 +170,7 @@ def get_optimizer(p, model):
 
 
 
-def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
+def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
     n_rows = 28 # MNIST / FashionMNIST sequential input
@@ -178,7 +187,7 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
 
             # Sequential input
             for row_i in range(n_rows):
-                out  = model(ims[:, 0, row_i, :])
+                out  = model(ims[:, 0, row_i, :], row_i)
             
             loss = loss_fn(out, labs)
             
@@ -198,23 +207,16 @@ def train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch):
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    if 'Wix' in name or 'Wei' in name:
-                        if 'fc5' not in name: # TEMP FIX: I'm training last layer inhib on task loss
+                    if 'Wix' in name or 'Wei' in name or 'Uix' in name or 'Uei' in name:
+                        if 'fc_output' not in name:
                             continue
                     
                     param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-
-                    # if 'Wex' in name:
-                    #     param.grad = None # This locks in the homeostatic loss only
-                    
-                    
         else:
             scaler.scale(loss).backward()
                     
         scaler.step(opt)
         scaler.update()
-        try: scheduler.step()
-        except NameError: pass
 
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
@@ -233,7 +235,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 model.reset_hidden(ims.shape[0])
                 # Sequential input
                 for row_i in range(n_rows):
-                    out  = model(ims[:, 0, row_i, :])
+                    out  = model(ims[:, 0, row_i, :], row_i)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
@@ -243,7 +245,6 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
         train_local_loss /= n_train
-        train_local_loss *= 1000 # To make it comparable to the global loss
         
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
@@ -256,7 +257,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 model.reset_hidden(ims.shape[0])
                 # Sequential input
                 for row_i in range(n_rows):
-                    out  = model(ims[:, 0, row_i, :])
+                    out  = model(ims[:, 0, row_i, :], row_i)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
@@ -268,7 +269,6 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         test_acc = test_correct / n_test * 100
         test_loss /=  n_test
         test_local_loss /= n_test
-        test_local_loss *= 1000 # To make it comparable to the global loss
 
         results["test_accs"].append(test_acc)
         results["test_losses"].append(test_loss.cpu().item())
@@ -333,12 +333,6 @@ if __name__ == "__main__":
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     EPOCHS = p.train.epochs
     opt = get_optimizer(p, model)
-    iters_per_epoch = len(loaders['train'])
-    lr_schedule = np.interp(np.arange((EPOCHS+1) * iters_per_epoch),
-                            [0, 5 * iters_per_epoch, EPOCHS * iters_per_epoch],
-                            [0, 1, 0])
-    
-    scheduler = lr_scheduler.LambdaLR(opt, lr_schedule.__getitem__)
     scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
@@ -348,7 +342,7 @@ if __name__ == "__main__":
     progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, opt, scheduler, p, scaler, epoch)
+        train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch)
         if epoch%1==0:
             eval_model(epoch, model, loaders, loss_fn_sum, p)          
             progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
@@ -357,31 +351,17 @@ if __name__ == "__main__":
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])
         run.finish()
 
-    # Save pickle of layers
-    layers_dict = []
-    for layer_num in range(1,2):
-        layers_dict.append(np.array(getattr(model, f"fc{layer_num}_output")))
+    model.remove_hooks()
 
-    if not p.exp.name == "":
-
-        # Open the file in binary write mode ('wb')
-        with open(f"{p.exp.name}_layers.pkl", 'wb') as file:
-            # Use pickle.dump() to save the list to the file
-            pkl.dump(layers_dict, file)
-
-        with open(f"{p.exp.name}_results.pkl", 'wb') as file:
-            # Use pickle.dump() to save the list to the file
-            pkl.dump(results, file)
-
-        torch.save(model.state_dict(), f"{p.exp.name}.pt")
-
-
-        # Generate plots here
-        utils.mean_plot(model)
-        utils.var_plot(model)
-        
-        #recon_var_plot(model)
-        utils.ood_scatter_plot(p, loaders, model)
+    if p.exp.save_model:
+        save_dir = f'/network/scratch/r/roy.eyono/{p.exp.name}_{p.train.dataset}_{p.data.brightness_factor}'
+        os.makedirs(save_dir, exist_ok=True)
+        best_axc=max(results["test_accs"])
+        model_name = str(uuid.uuid4()) + f'_{best_axc}.pth'
+        if p.exp.use_wandb:
+            model_name = f'{run.name}.pth'
+        model_path = os.path.join(save_dir, model_name)
+        torch.save(model.state_dict(), model_path)
 
     # Print best test and training accuracy
     print("Best train accuracy: {:.2f}".format(max(results["train_accs"])))
