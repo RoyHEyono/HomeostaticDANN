@@ -64,17 +64,19 @@ class prnn(nn.Module):
         self.ei_cell.reset_hidden(requires_grad=True, batch_size=batch_size)
     
     def forward(self, x, fwd_pass_cnt):
-        x = self.ei_cell(x, fwd_pass_cnt)
+        x_rnn = self.ei_cell(x, fwd_pass_cnt)
         if self.nonlinearity is not None:
-            x = self.nonlinearity(x)
-        x = self.fc_output(x)
-        return x
+            x = self.nonlinearity(x_rnn)
+            x = self.fc_output(x)
+            return x, x_rnn
+        x = self.fc_output(x_rnn)
+        return x, x_rnn
 
 def net(p:dict):
 
     input_dim = 784
     num_class = 10
-    hidden=500
+    hidden=p.model.hidden_layer_width
 
     if p.model.is_dann:
         return prnn(input_dim, hidden, num_class, configs=p, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)

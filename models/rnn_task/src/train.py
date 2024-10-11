@@ -41,6 +41,7 @@ from danns_eg.sequential import Sequential
 #import models.kakaobrain as kakaobrain
 import danns_eg.resnets as resnets
 import danns_eg.predictivernn as predictivernn
+import danns_eg.drnn as drnn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
 from munch import DefaultMunch
@@ -66,7 +67,7 @@ Section('train', 'Training related parameters').params(
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
-    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
+    brightness_factor=Param(float, 'random brightness jitter', default=0),
     brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 
@@ -76,11 +77,11 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=1),
+    normtype=Param(int,'train model with layernorm', default=0),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
+    homeostasis=Param(int,'homeostasis', default=0),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
@@ -91,15 +92,15 @@ Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='sgd'),
     exponentiated=Param(bool,'eg vs gd', default=False),
     wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
-    momentum=Param(float,'momentum factor', default=0.9), #0.5 # We need a seperate momentum for the inhib component as well
+    momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1.5),
-    lambda_homeo_var=Param(float, 'lambda homeostasis', default=2),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1),
+    lambda_homeo_var=Param(float, 'lambda homeostasis', default=1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
@@ -170,7 +171,7 @@ def get_optimizer(p, model):
 
 
 
-def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
+def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
     n_rows = 28 # MNIST / FashionMNIST sequential input
@@ -187,9 +188,10 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
 
             # Sequential input
             for row_i in range(n_rows):
-                out  = model(ims[:, 0, row_i, :], row_i)
+                out, hidden_act  = model(ims[:, 0, row_i, :], row_i)
             
             loss = loss_fn(out, labs)
+            local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
             
             # TODO: We need to return the local loss from the model
             # local_loss = model(ims).ln_mu_loss
@@ -209,6 +211,10 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
                 if param.requires_grad:
                     if 'Wix' in name or 'Wei' in name or 'Uix' in name or 'Uei' in name:
                         if 'fc_output' not in name:
+                            if p.model.task_opt_inhib:
+                                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
+                            else:
+                                param.grad = torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
                             continue
                     
                     param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
@@ -221,7 +227,7 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
 
-def eval_model(epoch, model, loaders, loss_fn_sum, p):
+def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
     model.eval()
     n_rows = 28
     with torch.no_grad():
@@ -235,13 +241,14 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 model.reset_hidden(ims.shape[0])
                 # Sequential input
                 for row_i in range(n_rows):
-                    out  = model(ims[:, 0, row_i, :], row_i)
+                    out, hidden_act  = model(ims[:, 0, row_i, :], row_i)
                 loss_val = loss_fn_sum(out, labs)
+                local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var).item()
                 train_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
-                train_local_loss += model.get_local_loss()
+                train_local_loss += local_loss
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
         train_local_loss /= n_train
@@ -257,13 +264,14 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 model.reset_hidden(ims.shape[0])
                 # Sequential input
                 for row_i in range(n_rows):
-                    out  = model(ims[:, 0, row_i, :], row_i)
+                    out, hidden_act  = model(ims[:, 0, row_i, :], row_i)
                 loss_val = loss_fn_sum(out, labs)
+                local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var).item()
                 test_loss += loss_val
                 #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
-                test_local_loss += model.get_local_loss()
+                test_local_loss += local_loss
 
         #print("Not currently running train eval!")
         test_acc = test_correct / n_test * 100
@@ -315,6 +323,7 @@ if __name__ == "__main__":
 
     p = train_utils.get_config()
     train_utils.set_seed_all(p.train.seed)
+    local_loss_fn = drnn.LocalLossMean(p.model.hidden_layer_width, nonlinearity_loss=p.model.implicit_homeostatic_loss)
 
     if p.exp.use_wandb:
         os.environ['WANDB_DIR'] = str(Path.home()/ "scratch/")
@@ -342,9 +351,9 @@ if __name__ == "__main__":
     progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch)
+        train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch)
         if epoch%1==0:
-            eval_model(epoch, model, loaders, loss_fn_sum, p)          
+            eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p)          
             progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
 
     if p.exp.use_wandb:
