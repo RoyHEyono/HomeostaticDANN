@@ -3,31 +3,40 @@ import torch
 import numpy as np 
 
 from danns_eg.conv import EiConvLayer, ConvLayer
-from danns_eg.drnn import EiRNNCell
+from danns_eg.drnn import EiRNNCell, RNNCell
 from danns_eg.dense import EiDenseLayerHomeostatic
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
+import torch.nn.functional as F
 import wandb
 
 class prnn(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, configs, homeostasis=True, nonlinearity=None):
+    def __init__(self, input_size, hidden_size, output_size, configs, homeostasis=True, nonlinearity=None, is_dann=1):
         super(prnn, self).__init__()
 
         print(f"Homeostasis is {homeostasis}")
 
         self.configs = configs
+
+        self.is_dann = is_dann
+
+        if self.is_dann:
         
-        self.ei_cell = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
-                        learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
-        
-        self.ei_cell_output = []
-        self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
+            self.ei_cell = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
+            
+            
+            self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
+
+        else:
+            self.ei_cell = RNNCell(28, hidden_size)
+            self.fc_output = nn.Linear(hidden_size, output_size, bias=True)
+
         self.evaluation_mode = False
+        self.ei_cell_output = []
         
         self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
         self.register_eval = False
-        
-
         
 
     def list_forward_hook(self, layername):
@@ -63,13 +72,17 @@ class prnn(nn.Module):
     def reset_hidden(self, batch_size):
         self.ei_cell.reset_hidden(requires_grad=True, batch_size=batch_size)
     
-    def forward(self, x, fwd_pass_cnt):
-        x_rnn = self.ei_cell(x, fwd_pass_cnt)
+    def forward(self, x):
+        x_rnn = self.ei_cell(x)
         if self.nonlinearity is not None:
             x = self.nonlinearity(x_rnn)
             x = self.fc_output(x)
+            if not self.is_dann:
+                x = F.softmax(x, dim=-1)
             return x, x_rnn
         x = self.fc_output(x_rnn)
+        if not self.is_dann:
+            x = F.softmax(x, dim=-1)
         return x, x_rnn
 
 def net(p:dict):
@@ -78,7 +91,4 @@ def net(p:dict):
     num_class = 10
     hidden=p.model.hidden_layer_width
 
-    if p.model.is_dann:
-        return prnn(input_dim, hidden, num_class, configs=p, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
-    else:
-        raise NotImplementedError
+    return prnn(input_dim, hidden, num_class, configs=p, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype, is_dann=p.model.is_dann)

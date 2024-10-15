@@ -336,7 +336,7 @@ class EiRNNCell(BaseRNNCell):
     def reset_hidden(self,requires_grad,batch_size):
         self.h = self.h0.repeat(1, batch_size)  # Repeat tensor along bath dim.
 
-    def forward(self, x, fwd_pass_cnt):
+    def forward(self, x):
         """
         x: input of shape input_dim x batch_dim
            U is h x input_dim
