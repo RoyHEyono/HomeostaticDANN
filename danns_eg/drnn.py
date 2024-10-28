@@ -94,7 +94,7 @@ class RNNCell(BaseRNNCell):
         else:
             self.bias = nn.Parameter(torch.zeros(self.n_hidden, 1))
 
-        self.init_weights()
+        self.init_weights(numerator=1) # NOTE: Changed the numerator here to 1
 
     @property
     def b(self):

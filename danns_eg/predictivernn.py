@@ -29,7 +29,9 @@ class prnn(nn.Module):
             self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
 
         else:
-            self.ei_cell = RNNCell(28, hidden_size)
+            self.ei_cell = RNNCell(28, hidden_size, nonlinearity=F.relu)
+            self.ei_cell_1 = RNNCell(hidden_size, hidden_size, nonlinearity=F.relu)
+            self.ei_cell_2 = RNNCell(hidden_size, hidden_size, nonlinearity=F.relu)
             self.fc_output = nn.Linear(hidden_size, output_size, bias=True)
 
         self.evaluation_mode = False
@@ -71,9 +73,13 @@ class prnn(nn.Module):
 
     def reset_hidden(self, batch_size):
         self.ei_cell.reset_hidden(requires_grad=True, batch_size=batch_size)
+        self.ei_cell_1.reset_hidden(requires_grad=True, batch_size=batch_size)
+        self.ei_cell_2.reset_hidden(requires_grad=True, batch_size=batch_size)
     
     def forward(self, x):
         x_rnn = self.ei_cell(x)
+        x_rnn = self.ei_cell_1(x_rnn)
+        x_rnn = self.ei_cell_2(x_rnn)
         if self.nonlinearity is not None:
             x = self.nonlinearity(x_rnn)
             x = self.fc_output(x)
@@ -81,8 +87,8 @@ class prnn(nn.Module):
                 x = F.softmax(x, dim=-1)
             return x, x_rnn
         x = self.fc_output(x_rnn)
-        if not self.is_dann:
-            x = F.softmax(x, dim=-1)
+        # if not self.is_dann:
+        #     x = F.softmax(x, dim=-1)
         return x, x_rnn
 
 def net(p:dict):

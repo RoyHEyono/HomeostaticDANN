@@ -58,7 +58,7 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='fashionmnist'),
+    dataset=Param(str, 'dataset', default='mnist'),
     batch_size=Param(int, 'batch-size', default=32),
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
@@ -85,16 +85,16 @@ Section('model', 'Model Parameters').params(
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
-    hidden_layer_width=Param(int,'number of hidden layers', default=500),
+    hidden_layer_width=Param(int,'number of hidden layers', default=128),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='sgd'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
+    wd=Param(float,'weight decay lambda', default=0), #0.001 # Weight decay is very bad for inhibition
     momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
-    lr=Param(float, 'lr and Wex if dann', default=0.1),
+    lr=Param(float, 'lr and Wex if dann', default=0.01), # Ideal learning rate for Vanilla RNN is 0.01
     use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
