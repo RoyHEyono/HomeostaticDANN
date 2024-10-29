@@ -26,7 +26,7 @@ class prnn(nn.Module):
                             learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
             
             
-            self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=nn.Softmax(dim=1), ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
+            self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
 
         else:
             self.ei_cell = RNNCell(28, hidden_size, nonlinearity=F.relu)
@@ -80,15 +80,7 @@ class prnn(nn.Module):
         x_rnn = self.ei_cell(x)
         x_rnn = self.ei_cell_1(x_rnn)
         x_rnn = self.ei_cell_2(x_rnn)
-        if self.nonlinearity is not None:
-            x = self.nonlinearity(x_rnn)
-            x = self.fc_output(x)
-            if not self.is_dann:
-                x = F.softmax(x, dim=-1)
-            return x, x_rnn
         x = self.fc_output(x_rnn)
-        # if not self.is_dann:
-        #     x = F.softmax(x, dim=-1)
         return x, x_rnn
 
 def net(p:dict):
