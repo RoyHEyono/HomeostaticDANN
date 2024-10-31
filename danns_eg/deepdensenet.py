@@ -88,13 +88,13 @@ class DeepDenseDANN(nn.Module):
     
     def forward(self, x):
         for i in range(1, self.num_layers + 1):
-            x = getattr(self, f'fc{i}')(x)
+            pre_activation = getattr(self, f'fc{i}')(x)
             if self.nonlinearity is not None:
-                x = self.nonlinearity(x)
-            x = self.relu(x)
+                x = self.nonlinearity(pre_activation)
+            x = self.relu(pre_activation)
 
         x = getattr(self, f'fc_output')(x)
-        return x
+        return x, pre_activation
 
 def net(p:dict):
 
@@ -108,9 +108,9 @@ def net(p:dict):
     
     if p.model.is_dann:
         if p.model.homeostasis:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=2, homeostasis=p.model.homeostasis, nonlinearity=None)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=None)
         else:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=2, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
         return model
         
     

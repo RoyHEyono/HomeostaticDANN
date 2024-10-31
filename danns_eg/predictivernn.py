@@ -24,6 +24,10 @@ class prnn(nn.Module):
         
             self.ei_cell = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
                             learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
+            self.ei_cell_1 = EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
+            self.ei_cell_2 = EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
             
             
             self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)

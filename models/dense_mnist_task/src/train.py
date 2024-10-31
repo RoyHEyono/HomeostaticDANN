@@ -39,6 +39,7 @@ import danns_eg.utils as train_utils
 #from config import DANNS_DIR
 #import lib.utils
 from danns_eg.sequential import Sequential
+import danns_eg.dense as densenn
 #import models.kakaobrain as kakaobrain
 import danns_eg.resnets as resnets
 import danns_eg.deepdensenet as deepdensenets
@@ -81,9 +82,10 @@ Section('model', 'Model Parameters').params(
     normtype=Param(int,'train model with layernorm', default=1),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    homeostasis=Param(int,'homeostasis', default=0),
+    excitation_training=Param(int,'training excitatory layers', default=1),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     hidden_layer_width=Param(int,'number of hidden layers', default=500),
@@ -92,16 +94,16 @@ Section('model', 'Model Parameters').params(
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='sgd'),
     exponentiated=Param(bool,'eg vs gd', default=False),
-    wd=Param(float,'weight decay lambda', default=1e-6), #0.001 # Weight decay is very bad for inhibition
-    momentum=Param(float,'momentum factor', default=0.9), #0.5 # We need a seperate momentum for the inhib component as well
+    wd=Param(float,'weight decay lambda', default=0), #0.001 # Weight decay is very bad for inhibition
+    momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1.5),
-    lambda_homeo_var=Param(float, 'lambda homeostasis', default=2),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0), #0.001
+    lambda_homeo_var=Param(float, 'lambda homeostasis', default=1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
@@ -174,7 +176,7 @@ def get_optimizer(p, model):
 
 
 
-def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
+def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
     annealing_temp = 0
@@ -189,8 +191,9 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
 
         with autocast():
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-            out = model(ims)
+            out, hidden_act = model(ims)
             loss = loss_fn(out, labs)
+            local_loss, local_loss_val = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
 
             batch_correct = out.argmax(1).eq(labs).sum().cpu().item()
             batch_acc = batch_correct / ims.shape[0] * 100
@@ -202,26 +205,40 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
             model.set_homeostatic_temp(1-annealing_temp)
             loss = annealing_temp * loss
 
-        if p.exp.use_wandb: 
-            wandb.log({"update_acc":batch_acc,
-                       "update_loss":loss.cpu().item(),
-                       "lr":opt.param_groups[0]['lr']})
+        
+        
+        grad_norms = {}
+        weight_norms = {}
 
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    if 'gamma' in name or 'beta' in name:
-                        continue
-                    if 'Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name:
+                    if 'Wix' in name or 'Wei' in name:
                         if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
-                                param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
+                            else:
+                                param.grad = torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
+                            grad_norm = param.grad.norm(2).item()  # L2 norm
+                            grad_norms[f"grad_norm/{name}"] = grad_norm
+                            weight_norm = param.norm(2).item()  # L2 norm of the weights
+                            weight_norms[f"weight_norm/{name}"] = weight_norm
                             continue
                     
-                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    if p.model.excitation_training:
+                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                        grad_norm = param.grad.norm(2).item()  # L2 norm
+                        grad_norms[f"grad_norm/{name}"] = grad_norm
+                        weight_norm = param.norm(2).item()  # L2 norm of the weights
+                        weight_norms[f"weight_norm/{name}"] = weight_norm
         else:
             scaler.scale(loss).backward()
-                    
+        
+        if p.exp.use_wandb: 
+            wandb.log({"update_acc":batch_acc,
+                       "update_loss":loss.cpu().item(),
+                       "lr":opt.param_groups[0]['lr']})
+            wandb.log(grad_norms)
         scaler.step(opt)
         scaler.update()
         idx_batch_count = idx_batch_count + 1
@@ -229,7 +246,7 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
 
-def eval_model(epoch, model, loaders, loss_fn_sum, p):
+def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
     model.eval()
     with torch.no_grad():
         train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
@@ -237,13 +254,14 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
             with autocast():
                 num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-                out = model(ims)
+                out, hidden_act = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
+                _, local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
                 #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
-                train_local_loss += model.get_local_loss()
+                train_local_loss += local_loss
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
         train_local_loss /= n_train
@@ -255,13 +273,14 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-                out = model(ims)
+                out, hidden_act = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
+                _, local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
                 #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
-                test_local_loss += model.get_local_loss()
+                test_local_loss += local_loss
 
         model.register_eval=False
         #print("Not currently running train eval!")
@@ -297,8 +316,15 @@ def train_model(p):
         if ep_i%log_epochs==0:
             eval_model(ep_i)
             # here also get model info like % dead units, "effective rank", and weight norm           
-            progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(
-                ep_i,results["train_accs"][-1],results["test_accs"][-1]))
+            progress_bar.set_description(
+            "Epoch {} | Train/Test Accuracy: {:.2f}/{:.2f} | Local Loss: {}/{}".format(
+                ep_i,
+                results["train_accs"][-1],
+                results["test_accs"][-1],
+                results["train_local_losses"][-1],
+                results["test_local_losses"][-1]
+            )
+            )
         #print(scheduler.get_last_lr())
     return results 
 
@@ -355,15 +381,24 @@ if __name__ == "__main__":
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
     loss_fn_no_reduction = CrossEntropyLoss(label_smoothing=0.1, reduction='none')
+    local_loss_fn = densenn.LocalLossMean(p.model.hidden_layer_width, nonlinearity_loss=p.model.implicit_homeostatic_loss)
 
     log_epochs = 10
     progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch)
+        train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch)
         if epoch%1==0:
-            eval_model(epoch, model, loaders, loss_fn_sum, p)          
-            progress_bar.set_description("Train/test accuracy after {} epochs: {:.2f}/{:.2f}".format(epoch,results["train_accs"][-1],results["test_accs"][-1]))
+            eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p)          
+            progress_bar.set_description(
+            "Epoch {} | Train/Test Accuracy: {:.2f}/{:.2f} | Local Loss: {:.2e}/{:.2e}".format(
+                epoch,
+                results["train_accs"][-1],
+                results["test_accs"][-1],
+                results["train_local_losses"][-1],
+                results["test_local_losses"][-1]
+            )
+            )
 
     if p.exp.use_wandb:
         run.summary["test_loss_auc"] = np.sum(results["test_losses"])

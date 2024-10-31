@@ -15,8 +15,8 @@ module load anaconda/3
 conda activate ffcv_eg
 
 # Grid parameters
-brightness_factors=(0 0.75)
-lambda_homeos=(300)  # Included in this script
+brightness_factors=(0 1)
+lambda_homeos=(0.01)  # Included in this script
 homeostasis_values=(1)
 normtypes=(0)  # Fixed to 0
 
@@ -34,7 +34,7 @@ brightness_factor=${brightness_factors[$grid_index]}
 # Load the pre-generated random configurations
 export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
-export LAMBDA_HOMEOS=300
+export LAMBDA_HOMEOS=0.01
 export HOMEOSTASIS=1  # Fixed to 1
 export NORMTYPE=0  # Fixed to 0
 

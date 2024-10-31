@@ -272,7 +272,7 @@ class LocalLossMean(nn.Module):
                 #kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
                 #cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
                 mse = lambda_mean * self.criterion(inputs, self.nonlinearity(inputs))
-                return mse # + kl_loss_val + cosine_loss
+                return mse, self.criterion(inputs, self.nonlinearity(inputs)).item() # + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
@@ -428,30 +428,11 @@ class EiDenseLayerHomeostatic(BaseModule):
         if self.affine:
             self.z = self.gamma * self.z + self.beta
 
-        self.local_loss_value = self.loss_fn(self.z, self.lambda_homeo, self.lambda_var).item()
-
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
-
         
-        
-        if self.homeostasis and self.training:
-            
-            local_loss = self.loss_fn(self.h, self.lambda_homeo, self.lambda_var)
-            
-            # Compute gradients for specific parameters
-            for name, param in self.named_parameters():
-                if param.requires_grad:
-                    if 'gamma' in name or 'beta' in name:
-                        local_loss_affine = self.loss_fn(self.h)
-                        param.grad = torch.autograd.grad(local_loss_affine, param, retain_graph=True)[0]
-                    if 'Wix' in name or 'Wei' in name:
-                        param.grad = torch.autograd.grad(local_loss, param, retain_graph=True)[0]
-        
-        
-
         return self.h
 
         
