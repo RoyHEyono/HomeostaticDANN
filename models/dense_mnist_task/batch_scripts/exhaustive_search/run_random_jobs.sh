@@ -43,7 +43,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --train.batch_size=32 \
   --opt.lambda_homeo=$lambda_homeo \
   --model.normtype=$normtype \
-  --model.task_opt_inhib=0 \
+  --model.task_opt_inhib=1 \
   --model.homeostasis=$homeostasis \
   --model.excitation_training=1 \
   --model.hidden_layer_width=$hidden_layer_width \
