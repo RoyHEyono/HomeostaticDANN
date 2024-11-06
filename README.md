@@ -4,7 +4,7 @@
 
 ## Work in Progress
 
-**This repository is a work in progress.** Please note that the code, features, and documentation may change as development continues. I welcome your thoughts and comments on the project.
+**This repository is a work in progress.** Please note that the code, features, and documentation may change as development continues. I welcome your thoughts and comments on the project. For more details on this project, here is the [white paper](https://drive.google.com/file/d/1Zk0jb8XOfjlpu5Qq-KG2njwczrpAfSkV/view?usp=drive_link).
 
 ## Installation
 
