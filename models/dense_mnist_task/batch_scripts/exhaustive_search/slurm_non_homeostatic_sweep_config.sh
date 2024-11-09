@@ -35,6 +35,7 @@ normtype=${normtypes[$normtype_idx]}
 export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
 export NORMTYPE=$normtype
+export NORMTYPE_DETACH=1
 export HOMEOSTASIS=0  # Fixed to 0
 export LAMBDA_HOMEOS=1 # Fixed to 1 But not functional because homeostasis is deactivated
 

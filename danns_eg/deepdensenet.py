@@ -6,15 +6,17 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayerHomeostatic
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
+from danns_eg.normalization import LayerNormalize
 import wandb
 
 
 class DeepDenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, is_dann=1):
+    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, detachnorm=0, is_dann=1):
         super(DeepDenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         self.num_layers = num_layers
         self.is_dann = is_dann
+        self.detachnorm = detachnorm
 
         if self.is_dann:
 
@@ -42,7 +44,10 @@ class DeepDenseDANN(nn.Module):
             setattr(self, f'fc_output', nn.Linear(hidden_size, output_size, bias=True))
 
         self.evaluation_mode = False
-        self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
+        if detachnorm:
+            self.nonlinearity = LayerNormalize(hidden_size) if nonlinearity else None
+        else:
+            self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
         self.configs = configs
         self.register_eval = False
     
@@ -91,7 +96,9 @@ class DeepDenseDANN(nn.Module):
             pre_activation = getattr(self, f'fc{i}')(x)
             if self.nonlinearity is not None:
                 x = self.nonlinearity(pre_activation)
-            x = self.relu(pre_activation)
+                x = self.relu(x)
+            else:
+                x = self.relu(pre_activation)
 
         x = getattr(self, f'fc_output')(x)
         return x, pre_activation
@@ -108,9 +115,9 @@ def net(p:dict):
     
     if p.model.is_dann:
         if p.model.homeostasis:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=None)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=None, detachnorm=p.model.normtype_detach)
         else:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype, detachnorm=p.model.normtype_detach)
         return model
         
     

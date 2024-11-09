@@ -45,6 +45,23 @@ class CustomGroupNorm(nn.Module):
         
         return x
 
+class LayerNormalize(nn.Module):
+    def __init__(self, feature_size, eps=1e-5):
+        super(LayerNormalize, self).__init__()
+        self.eps = eps  # Small value to prevent division by zero
+
+    def forward(self, x):
+        # Calculate mean and variance
+        with torch.no_grad():
+            mean = x.mean(dim=-1, keepdim=True)
+            var = x.var(dim=-1, keepdim=True, unbiased=False)
+        
+        # Normalize the input
+        x_norm = (x - mean) / torch.sqrt(var + self.eps)
+        
+        return x_norm
+
+
 
 # main function
 if __name__ == "__main__":
