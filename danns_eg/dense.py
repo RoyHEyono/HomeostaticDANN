@@ -296,7 +296,7 @@ class EiDenseLayerHomeostatic(BaseModule):
     Class modeling a subtractive feed-forward inhibition layer
     """
     def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, lambda_var=1, affine=False, train_exc_homeo=False,
-                 implicit_loss=False, init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+                 implicit_loss=False, shunting=False, init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
         ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
@@ -324,6 +324,8 @@ class EiDenseLayerHomeostatic(BaseModule):
         # self.register_parameter('Wii', nn.Parameter(torch.empty(self.ni,self.ni), requires_grad=True))
         self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input), requires_grad=True)
         self.Wei = nn.Parameter(torch.empty(self.ne,self.ni), requires_grad=True)
+        if shunting:
+            self.alpha = nn.Parameter(torch.ones(size=(1, self.ni))) # row vector
         # self.Wix = nn.Linear(self.n_input, self.ni)
         # self.Wei = nn.Linear(self.ni,self.ne, bias=False)
         self.sigmoid = nn.Sigmoid()
@@ -335,7 +337,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.elu = nn.ELU()
         self.local_loss_value = 0
         self.epsilon =  1e-6
-        self.divisive_inh = False
+        self.divisive_inh = shunting
 
         if self.affine:
             self.gamma = nn.Parameter(torch.ones(self.ne)) 
@@ -420,8 +422,17 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.hex = torch.matmul(x, self.Wex.T)
         self.hi = torch.matmul(x, self.Wix.T)
         self.hei = torch.matmul(self.relu(self.hi), self.Wei.T)
-
         self.z = self.hex - self.hei # Temporary solution
+
+        if self.divisive_inh:
+
+            self.exp_alpha = torch.exp(self.alpha) # 1 x ni
+
+            # ne x batch = (1xni * ^ne^xni ) @ nix^btch^ +  nex1
+            self.gamma = torch.matmul(self.hi * self.exp_alpha, self.Wei.T) + self.epsilon
+
+            # ne x batch = ne x batch * ne x batch
+            self.z = (1/ self.gamma) * self.z
 
         if self.use_bias: self.z = self.z + self.b.T
 

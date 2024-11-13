@@ -16,7 +16,9 @@ conda activate ffcv_eg
 
 # Grid parameters
 brightness_factors=(0 1)
-export LAMBDA_HOMEOS=1 # THIS IS WHAT NEEDS TO BE CHANGED IN THE SCRIPT
+export LAMBDA_HOMEOS=0.001 # THIS IS WHAT NEEDS TO BE CHANGED IN THE SCRIPT
+export SHUNTING=1
+export NORMTYPE_DETACH=0
 homeostasis_values=(1)
 normtypes=(0)  # Fixed to 0
 

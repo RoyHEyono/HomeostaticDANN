@@ -84,6 +84,7 @@ Section('model', 'Model Parameters').params(
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=0),
+    shunting=Param(int,'divisive inhibition', default=1),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
@@ -214,7 +215,7 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    if 'Wix' in name or 'Wei' in name:
+                    if 'Wix' in name or 'Wei' in name or 'alpha' in name:
                         if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
                                 param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]

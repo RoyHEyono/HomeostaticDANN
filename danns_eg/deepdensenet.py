@@ -11,7 +11,7 @@ import wandb
 
 
 class DeepDenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, detachnorm=0, is_dann=1):
+    def __init__(self, input_size, hidden_size, output_size, configs, num_layers=2, homeostasis=True, nonlinearity=None, detachnorm=0, is_dann=1, shunting=0):
         super(DeepDenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         self.num_layers = num_layers
@@ -21,12 +21,12 @@ class DeepDenseDANN(nn.Module):
         if self.is_dann:
 
             setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
-                                        train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss))
+                                        train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
 
             # Hidden layers
             for i in range(2, self.num_layers + 1):
                 setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
-                                        train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss))
+                                        train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
                                         
             
             self.relu = nn.ReLU()
@@ -115,9 +115,9 @@ def net(p:dict):
     
     if p.model.is_dann:
         if p.model.homeostasis:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=None, detachnorm=p.model.normtype_detach)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=None, detachnorm=p.model.normtype_detach, shunting=p.model.shunting)
         else:
-            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype, detachnorm=p.model.normtype_detach)
+            model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=1, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype, detachnorm=p.model.normtype_detach, shunting=p.model.shunting)
         return model
         
     

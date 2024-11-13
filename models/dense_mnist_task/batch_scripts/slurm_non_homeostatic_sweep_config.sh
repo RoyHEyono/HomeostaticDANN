@@ -15,9 +15,10 @@ module load anaconda/3
 conda activate ffcv_eg
 
 # Grid parameters
-brightness_factors=(0 1)
+brightness_factors=(0.25 0.75)
 homeostasis_values=(0)
 normtypes=(0 1)
+export SHUNTING=1
 
 # Calculate grid parameters based on SLURM_ARRAY_TASK_ID
 num_brightness_factors=${#brightness_factors[@]}
