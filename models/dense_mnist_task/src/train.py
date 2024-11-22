@@ -87,7 +87,7 @@ Section('model', 'Model Parameters').params(
     shunting=Param(int,'divisive inhibition', default=1),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     hidden_layer_width=Param(int,'number of hidden layers', default=500),
@@ -104,13 +104,13 @@ Section('opt', 'optimiser parameters').params(
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0.001), #0.001
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0.01), #0.001
     lambda_homeo_var=Param(float, 'lambda homeostasis', default=1),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
-    wei=Param(float,'lr for Wei if dann', default=1e-4), # 0.001
-    wix=Param(float,'lr for Wix if dann', default=0.5), # 0.1
+    wei=Param(float,'lr for Wei if dann', default=0.01), # 0.001
+    wix=Param(float,'lr for Wix if dann', default=0.01), # 0.1
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(

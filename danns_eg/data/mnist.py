@@ -184,10 +184,10 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutatio
 
     if use_test or brightness_factor_eval:
         # Create a dataloader for the training dataset
-        train_dataloader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False)
+        train_dataloader = DataLoader(train_dataset, batch_size=batchsize, shuffle=False, num_workers=2, pin_memory=True )
         
         # Create a dataloader for the test dataset
-        test_dataloader = DataLoader(test_dataset, batch_size=batchsize, shuffle=False)
+        test_dataloader = DataLoader(test_dataset, batch_size=batchsize, shuffle=False, num_workers=2, pin_memory=True )
     else:
         dataset_size = len(train_dataset)
         data_indices = list(range(dataset_size))

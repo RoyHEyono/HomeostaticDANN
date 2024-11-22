@@ -17,12 +17,14 @@ class prnn(nn.Module):
         print(f"Homeostasis is {homeostasis}")
 
         self.configs = configs
+        self.num_layers = 3
 
         self.is_dann = is_dann
+        self.relu = nn.ReLU()
 
         if self.is_dann:
         
-            self.ei_cell = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+            self.ei_cell_0 = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
                             learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
             self.ei_cell_1 = EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
                             learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
@@ -33,7 +35,7 @@ class prnn(nn.Module):
             self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
 
         else:
-            self.ei_cell = RNNCell(28, hidden_size, nonlinearity=F.relu)
+            self.ei_cell_0 = RNNCell(28, hidden_size, nonlinearity=F.relu)
             self.ei_cell_1 = RNNCell(hidden_size, hidden_size, nonlinearity=F.relu)
             self.ei_cell_2 = RNNCell(hidden_size, hidden_size, nonlinearity=F.relu)
             self.fc_output = nn.Linear(hidden_size, output_size, bias=True)
@@ -59,7 +61,7 @@ class prnn(nn.Module):
         return forward_hook
 
     def register_hooks(self):
-        self.ei_cell_hook = self.ei_cell.register_forward_hook(self.list_forward_hook(self.ei_cell_output))
+        self.ei_cell_hook = self.ei_cell_0.register_forward_hook(self.list_forward_hook(self.ei_cell_output))
 
 
     def remove_hooks(self):
@@ -76,14 +78,19 @@ class prnn(nn.Module):
         return total_local_loss
 
     def reset_hidden(self, batch_size):
-        self.ei_cell.reset_hidden(requires_grad=True, batch_size=batch_size)
+        self.ei_cell_0.reset_hidden(requires_grad=True, batch_size=batch_size)
         self.ei_cell_1.reset_hidden(requires_grad=True, batch_size=batch_size)
         self.ei_cell_2.reset_hidden(requires_grad=True, batch_size=batch_size)
     
     def forward(self, x):
-        x_rnn = self.ei_cell(x)
-        x_rnn = self.ei_cell_1(x_rnn)
-        x_rnn = self.ei_cell_2(x_rnn)
+        x_rnn = self.ei_cell_0(x)
+        for i in range(1, self.num_layers):
+            pre_activation = getattr(self, f'ei_cell_{i}')(x_rnn)
+            if self.nonlinearity is not None:
+                x_rnn = self.nonlinearity(pre_activation)
+                x_rnn = self.relu(x_rnn)
+            else:
+                x_rnn = self.relu(pre_activation)
         x = self.fc_output(x_rnn)
         return x, x_rnn
 

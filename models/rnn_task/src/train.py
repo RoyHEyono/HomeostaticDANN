@@ -58,8 +58,8 @@ SCALE_DIR = f"{DANNS_DIR}/scale_exps"
 
 
 Section('train', 'Training related parameters').params(
-    dataset=Param(str, 'dataset', default='mnist'),
-    batch_size=Param(int, 'batch-size', default=32),
+    dataset=Param(str, 'dataset', default='fashionmnist'),
+    batch_size=Param(int, 'batch-size', default=128), #32
     epochs=Param(int, 'epochs', default=50), 
     seed=Param(int, 'seed', default=0),
     use_testset=Param(bool, 'use testset as val set', default=True),
@@ -67,7 +67,7 @@ Section('train', 'Training related parameters').params(
 
 Section('data', 'dataset related parameters').params(
     subtract_mean=Param(bool, 'subtract mean from the data', default=False),
-    brightness_factor=Param(float, 'random brightness jitter', default=0),
+    brightness_factor=Param(float, 'random brightness jitter', default=0.75),
     brightness_factor_eval=Param(float, 'brightness evaluation', default=0),
     contrast_jitter=Param(bool, 'contrast jitter', default=False),
 
@@ -77,7 +77,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=0),
+    normtype=Param(int,'train model with layernorm', default=1),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=0),
@@ -85,7 +85,7 @@ Section('model', 'Model Parameters').params(
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
-    hidden_layer_width=Param(int,'number of hidden layers', default=100),
+    hidden_layer_width=Param(int,'number of hidden layers', default=500),
     #input_shape=Param(tuple,'optional, none batch' 
 )
 Section('opt', 'optimiser parameters').params(
@@ -181,9 +181,9 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
         model.train()
         opt.zero_grad(set_to_none=True)
         with autocast():
-            ims = ims.cuda()
+            ims = ims.cuda(non_blocking=True)
             ims = ims.view(ims.shape[0], 1, 28, 28)
-            labs = labs.cuda()
+            labs = labs.cuda(non_blocking=True)
             model.reset_hidden(ims.shape[0])
 
             # Sequential input
