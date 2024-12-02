@@ -53,11 +53,11 @@ class prnn(nn.Module):
             mu = torch.mean(output, axis=-1).mean().item()
             # Second moment instead of variance
             var = torch.mean(output**2, axis=-1).mean().item()
-            if self.configs.exp.use_wandb: 
-                if self.register_eval:
-                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
-                else:
-                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
+            # if self.configs.exp.use_wandb: 
+            #     if self.register_eval:
+            #         wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
+            #     else:
+            #         wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
         return forward_hook
 
     def register_hooks(self):
