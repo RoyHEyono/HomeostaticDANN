@@ -15,7 +15,7 @@ module load anaconda/3
 conda activate ffcv_eg
 
 # Grid parameters
-brightness_factors=(0.5 0.85)
+brightness_factors=(0 0.85)
 homeostasis_values=(0)
 normtypes=(0 1)
 export SHUNTING=1

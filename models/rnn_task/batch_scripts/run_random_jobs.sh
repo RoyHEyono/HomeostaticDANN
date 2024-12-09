@@ -49,6 +49,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/rnn_task/src/train.py \
   --model.homeostasis=$homeostasis \
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
+  --model.is_dann=0 \
   --opt.use_sep_bias_gain_lrs=0 \
   --exp.wandb_project=MNIST_RNN_DANN \
   --model.implicit_homeostatic_loss=0 \

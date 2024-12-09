@@ -77,12 +77,13 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=1),
+    normtype=Param(int,'train model with layernorm', default=0),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=0),
+    homeostasis=Param(int,'homeostasis', default=1),
+    excitation_training=Param(int,'training excitatory layers', default=0),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     hidden_layer_width=Param(int,'number of hidden layers', default=500),
@@ -191,7 +192,7 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                 out, hidden_act  = model(ims[:, 0, row_i, :])
             
             loss = loss_fn(out, labs)
-            local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
+            # local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var) # NOTE: This is slightly problematic for homeostasis. To be fixed.
             
             # TODO: We need to return the local loss from the model
             # local_loss = model(ims).ln_mu_loss
@@ -212,12 +213,11 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                     if 'Wix' in name or 'Wei' in name or 'Uix' in name or 'Uei' in name:
                         if 'fc_output' not in name:
                             if p.model.task_opt_inhib:
-                                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
-                            else:
-                                param.grad = torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
+                                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + param.grad
                             continue
                     
-                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    if p.model.excitation_training:
+                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
         else:
             scaler.scale(loss).backward()
                     
@@ -253,6 +253,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
         train_loss /=  n_train
         train_local_loss /= n_train
         
+        model.register_eval=True
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast():
@@ -273,6 +274,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
                 n_test += ims.shape[0]
                 test_local_loss += local_loss
 
+        model.register_eval=False
         #print("Not currently running train eval!")
         test_acc = test_correct / n_test * 100
         test_loss /=  n_test
@@ -295,9 +297,9 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
                 "train_local_loss":results["train_local_losses"][-1], "test_local_loss":results["test_local_losses"][-1],
                 "train_total_loss":results["train_total_loss"][-1], "test_total_loss":results["test_total_loss"][-1],})
 
-def build_model(p):
+def build_model(p, scaler):
     #model = densenets.net(p)
-    model = predictivernn.net(p)
+    model = predictivernn.net(p, scaler)
     model.reset_hidden(batch_size=p.train.batch_size)
     return model
 
@@ -336,13 +338,14 @@ if __name__ == "__main__":
             name += f"wix:{p.opt.inhib_lrs.wix} wei:{p.opt.inhib_lrs.wei}"
 
     loaders = get_dataloaders(p)
-    model = build_model(p)
+    scaler = GradScaler()
+    model = build_model(p, scaler)
+    opt = get_optimizer(p, model)
+    model.set_optimizer(opt)
     model.register_hooks() # Register the forward hooks
     model = model.cuda()
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     EPOCHS = p.train.epochs
-    opt = get_optimizer(p, model)
-    scaler = GradScaler()
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
     loss_fn_no_reduction = CrossEntropyLoss(label_smoothing=0.1, reduction='none')
