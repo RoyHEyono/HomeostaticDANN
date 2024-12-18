@@ -187,7 +187,7 @@ class LocalLossMean(nn.Module):
             if not self.nonlinearity_loss:
                 #kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
                 #cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
-                mse = lambda_mean * self.criterion(inputs, self.nonlinearity(inputs))
+                mse = lambda_mean * self.criterion(inputs, self.nonlinearity(inputs).detach())
                 return mse # + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)

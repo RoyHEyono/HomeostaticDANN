@@ -192,7 +192,6 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                 out, hidden_act  = model(ims[:, 0, row_i, :])
             
             loss = loss_fn(out, labs)
-            # local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var) # NOTE: This is slightly problematic for homeostasis. To be fixed.
             
             # TODO: We need to return the local loss from the model
             # local_loss = model(ims).ln_mu_loss
@@ -220,9 +219,10 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
         else:
             scaler.scale(loss).backward()
-                    
-        scaler.step(opt)
-        scaler.update()
+
+        if p.model.excitation_training:     
+            scaler.step(opt)
+            scaler.update()
 
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc

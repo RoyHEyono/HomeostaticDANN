@@ -47,37 +47,75 @@ class prnn(nn.Module):
 
         self.evaluation_mode = False
         self.ei_cell_output = []
+        self.update_homeostatic_weights = False
         
         self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
         self.register_eval = False
-        
+
+
 
     def list_forward_hook(self, layername):
+        # Initialize stats_tracker, accumulated_loss, and hook_count for each layer
+        if not hasattr(self, 'layer_data'):
+            self.layer_data = {}
+
+        if layername not in self.layer_data:
+            self.layer_data[layername] = {
+                'stats_tracker': {'mu': 0.0, 'var': 0.0, 'alpha': 0.99},
+                'accumulated_loss': 0.0,
+                'hook_count': 0,
+            }
+
         def forward_hook(layer, input, output):
-            # get mean and variance of the output on axis 1 and append to output list
-            mu = torch.mean(output, axis=-1).mean().item()
-            # Second moment instead of variance
-            var = torch.mean(output**2, axis=-1).mean().item()
-            if self.configs.exp.use_wandb and self.hook_count%50==0:
+            # NOTE: This function is called 28 times for each layer in every mini-batch gradient update on sequential MNIST
+            # NOTE: Ideally, you'd want to call the gradient update once after the 28 inputs 
+            # Access layer-specific data
+            layer_data = self.layer_data[layername]
+            stats_tracker = layer_data['stats_tracker']
+            alpha = stats_tracker['alpha']
+
+            # Compute mean and second moment
+            current_mu = torch.mean(output, axis=-1).mean().item()
+            current_var = torch.mean(output**2, axis=-1).mean().item()
+
+            # Update moving averages
+            stats_tracker['mu'] = alpha * stats_tracker['mu'] + (1 - alpha) * current_mu
+            stats_tracker['var'] = alpha * stats_tracker['var'] + (1 - alpha) * current_var
+
+            # Increment hook count for this layer
+            layer_data['hook_count'] += 1
+
+            # Log to wandb periodically (e.g., every 1000 calls)
+            log_frequency = 28
+            if self.configs.exp.use_wandb and layer_data['hook_count'] % log_frequency == 0:
                 if self.register_eval:
-                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
+                    wandb.log({f"eval_{layername}_mu": stats_tracker['mu'], 
+                            f"eval_{layername}_var": stats_tracker['var']})
                 else:
-                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
-            
+                    wandb.log({f"train_{layername}_mu": stats_tracker['mu'], 
+                            f"train_{layername}_var": stats_tracker['var']})
+
+            # Compute gradients periodically (e.g., every 100 calls)
+            update_frequency = 28 # This is based on sequentialMNIST
             if self.homeostasis and torch.is_grad_enabled():
-                local_loss = self.local_loss_fn(output, self.configs.opt.lambda_homeo, self.configs.opt.lambda_homeo_var)
-                for name, param in layer.named_parameters():
-                    if param.requires_grad:
-                        if 'Wix' in name or 'Wei' in name or 'Uix' in name or 'Uei' in name:
-                            if 'fc_output' not in name:
-                                param.grad = torch.autograd.grad(self.scaler.scale(local_loss), param, retain_graph=True)[0]
-                                continue
-                
-                
-            
-            self.hook_count = self.hook_count + 1
+                local_loss = self.local_loss_fn(output, 
+                                                self.configs.opt.lambda_homeo, 
+                                                self.configs.opt.lambda_homeo_var)
+                layer_data['accumulated_loss'] += local_loss
+
+                if layer_data['hook_count'] % update_frequency == 0:
+                    for name, param in layer.named_parameters():
+                        if param.requires_grad and ('Wix' in name or 'Wei' in name or 'Uix' in name or 'Uei' in name) and 'fc_output' not in name:
+                            # Compute and assign gradient
+                            param.grad = torch.autograd.grad(self.scaler.scale(layer_data['accumulated_loss']), param, retain_graph=True)[0]
+                    
+                    # Reset accumulated loss after gradient update
+                    layer_data['accumulated_loss'] = 0.0
+                    self.update_homeostatic_weights = True
 
         return forward_hook
+
+
 
     def set_optimizer(self, opt):
         self.opt = opt
@@ -118,8 +156,12 @@ class prnn(nn.Module):
             else:
                 x_rnn = self.relu(pre_activation)
         x = self.fc_output(x_rnn)
-        self.scaler.step(self.opt)
-        self.scaler.update()
+
+        if self.update_homeostatic_weights:
+            self.scaler.step(self.opt)
+            self.scaler.update()
+            self.update_homeostatic_weights = False
+        
         return x, x_rnn
 
 def net(p:dict, scaler):
