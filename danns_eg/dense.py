@@ -330,11 +330,11 @@ class EiDenseLayerHomeostatic(BaseModule):
         # self.Wei = nn.Linear(self.ni,self.ne, bias=False)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
-        self.selu = nn.SELU()
-        self.leakyrelu = nn.LeakyReLU(negative_slope=-0.5)
-        self.softplus = nn.Softplus(beta=0.5)
-        self.mish = nn.Mish()
-        self.elu = nn.ELU()
+        # self.selu = nn.SELU()
+        # self.leakyrelu = nn.LeakyReLU(negative_slope=-0.5)
+        # self.softplus = nn.Softplus(beta=0.5)
+        # self.mish = nn.Mish()
+        # self.elu = nn.ELU()
         self.local_loss_value = 0
         self.epsilon =  1e-6
         self.divisive_inh = shunting

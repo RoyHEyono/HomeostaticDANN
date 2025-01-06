@@ -7,7 +7,7 @@ The goal is to evaluate the performance of layer normalization for DANNs network
 # %load_ext autoreload
 # %autoreload 2
 from operator import truediv
-import cv2
+#import cv2
 import os
 import sys
 import numpy as np 
@@ -18,7 +18,7 @@ from fastargs import Section, Param, get_current_config
 
 import matplotlib.pyplot as plt
 import wandb
-from orion.client import report_objective
+# from orion.client import report_objective
 from pathlib import Path
 import json
 from fastargs.dict_utils import NestedNamespace
@@ -28,7 +28,7 @@ import uuid
 
 import torch 
 import torch.nn as nn 
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.nn import CrossEntropyLoss
 from torch.optim import lr_scheduler, Adam
 
@@ -44,7 +44,7 @@ import danns_eg.predictivernn as predictivernn
 import danns_eg.drnn as drnn
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
-from munch import DefaultMunch
+#from munch import DefaultMunch
 import danns_eg.utils as utils
 #ood_scatter_plot, recon_var_plot, mean_plot, var_plot
 
@@ -81,7 +81,7 @@ Section('model', 'Model Parameters').params(
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
-    excitation_training=Param(int,'training excitatory layers', default=0),
+    excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
@@ -181,7 +181,7 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
 
         model.train()
         opt.zero_grad(set_to_none=True)
-        with autocast():
+        with autocast("cuda"):
             ims = ims.cuda(non_blocking=True)
             ims = ims.view(ims.shape[0], 1, 28, 28)
             labs = labs.cuda(non_blocking=True)
@@ -233,7 +233,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
     with torch.no_grad():
         train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['train']:
-            with autocast():
+            with autocast("cuda"):
                 ims = ims.cuda()
                 ims = ims.view(ims.shape[0], 1, 28, 28)
                 labs = labs.cuda()
@@ -256,7 +256,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
         model.register_eval=True
         test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
         for ims, labs in loaders['test']:
-            with autocast():
+            with autocast("cuda"):
                 ims = ims.cuda()
                 ims = ims.view(ims.shape[0], 1, 28, 28)
                 labs = labs.cuda()

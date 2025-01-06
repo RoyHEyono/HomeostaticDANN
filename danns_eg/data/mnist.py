@@ -1,4 +1,4 @@
-import cv2
+#import cv2
 import os
 import sys
 import numpy as np 
@@ -14,7 +14,7 @@ from PIL import Image
 from torchvision import transforms as trnf
 from torchvision import datasets
 import torch.nn.functional as F
-from ffcv.transforms import ToDevice
+# from ffcv.transforms import ToDevice
 # from config import DATASETS_DIR
 # import train_utils
 
@@ -169,8 +169,10 @@ def get_sparse_permutation_invariant_fashionmnist_dataloaders(p=None, permutatio
     test_transform = trnf.Compose(test_transform)
 
     # Download and load the training dataset
-    train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=True, transform=train_transform, download=False)
-    test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/", train=False, transform=test_transform if brightness_factor_eval else train_transform, download=False)
+    # train_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/FashionMNIST/", train=True, transform=train_transform, download=False)
+    # test_dataset = datasets.FashionMNIST(root="/network/datasets/fashionmnist.var/fashionmnist_torchvision/FashionMNIST", train=False, transform=test_transform if brightness_factor_eval else train_transform, download=False)
+    train_dataset = datasets.FashionMNIST(root="/home/mila/r/roy.eyono/data/FashionMNIST/", train=True, transform=train_transform, download=True)
+    test_dataset = datasets.FashionMNIST(root="/home/mila/r/roy.eyono/data/FashionMNIST", train=False, transform=test_transform if brightness_factor_eval else train_transform, download=False)
 
     
 

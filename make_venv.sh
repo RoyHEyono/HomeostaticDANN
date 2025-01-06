@@ -1,13 +1,14 @@
-module purge
-module load python/3.7 
-module load cuda/11.1/cudnn/8.0
-module load python/3.7/cuda/11.1/cudnn/8.0/pytorch/1.8.1
+# modified from https://github.com/jcornford/dann_rnns/blob/main/make_venv.sh
+#
+module --force purge
+module load python/3.9
 
-module list
 
-VENV_NAME='danns_eg'
+VENV_NAME='homeostatic_dann_2025'
 VENV_DIR=$HOME'/venvs/'$VENV_NAME
+
 echo 'Building virtual env: '$VENV_NAME' in '$VENV_DIR
+
 mkdir $VENV_DIR
 # Add .gitignore to folder just in case it is in a repo
 # Ignore everything in the directory apart from the gitignore file
@@ -17,6 +18,19 @@ echo "!.gitignore" >> $VENV_DIR/.gitignore
 virtualenv $VENV_DIR
 
 source $VENV_DIR'/bin/activate'
+pip install --upgrade pip
+pip cache purge
+
+# install python packages not provided by modules
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 --no-cache-dir
+pip install pandas==1.5.3
+
+
+pip install matplotlib==3.5.3
+pip install scipy==1.12.0
+pip install numpy==1.22.4
+pip install scikit-learn==1.4.0
 
 # install python packages not provided by modules
 pip install matplotlib pandas scipy numpy #wandb
@@ -25,26 +39,18 @@ pip install wandb
 pip install hydra-core --upgrade
 pip install tqdm
 
-pip install torchvision==0.9.1 --no-deps
 pip install ipython --ignore-installed
 pip install ipykernel
-pip install git+https://github.com/cooper-org/cooper.git
 
 # Orion installations
 pip install orion 
 
 # set up MILA jupyterlab
 echo which ipython
-ipython kernel install --user --name=danns_eg_kernel_080223
+ipython kernel install --user --name=homeostatic_dann_2025_kernel
 
-# grab the allen sdk!
-#pip install allensdk
-# # install bleeding edge orion - bug fix now ignore code changes works
-# #pip install git+https://github.com/epistimio/orion.git@develop
-# pip install git+https://github.com/epistimio/orion.git@9f3894f3f95c71530249f8149b11beb0f31699bc
+pip3 install -e .
 
-# # install grid search plugin
-# pip install git+https://github.com/bouthilx/orion.algo.grid_search.git
 
 
 
