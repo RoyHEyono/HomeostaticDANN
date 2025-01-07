@@ -157,7 +157,7 @@ class prnn(nn.Module):
                 x_rnn = self.relu(pre_activation)
         x = self.fc_output(x_rnn)
 
-        if self.update_homeostatic_weights:
+        if self.update_homeostatic_weights and self.homeostasis:
             self.scaler.step(self.opt)
             self.scaler.update()
             self.update_homeostatic_weights = False

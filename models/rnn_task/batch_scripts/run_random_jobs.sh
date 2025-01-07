@@ -10,9 +10,7 @@
 #SBATCH --job-name=dann_rnn_config_run
 
 # Load environment
-. /etc/profile
-module load anaconda/3
-conda activate ffcv_eg
+. ~/HomeostaticDANN/load_venv.sh
 
 # Retrieve grid configuration parameters
 grid_index=$GRID_INDEX
@@ -49,9 +47,9 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/rnn_task/src/train.py \
   --model.homeostasis=$homeostasis \
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
-  --model.is_dann=0 \
+  --model.is_dann=1 \
   --opt.use_sep_bias_gain_lrs=0 \
-  --exp.wandb_project=MNIST_RNN_DANN \
+  --exp.wandb_project=RNN_DANN_SWEEP \
   --model.implicit_homeostatic_loss=0 \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \
