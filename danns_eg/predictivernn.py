@@ -19,7 +19,7 @@ class prnn(nn.Module):
         print(f"Homeostasis is {homeostasis}")
 
         self.configs = configs
-        self.num_layers = 3
+        self.num_layers = 1
         self.homeostasis = homeostasis
         self.is_dann = is_dann
         self.relu = nn.ReLU()
@@ -28,13 +28,17 @@ class prnn(nn.Module):
         self.local_loss_fn = drnn.LocalLossMean(configs.model.hidden_layer_width, nonlinearity_loss=configs.model.implicit_homeostatic_loss)
 
         if self.is_dann:
-        
-            self.ei_cell_0 = EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
-                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
-            self.ei_cell_1 = EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
-                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
-            self.ei_cell_2 = EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
-                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1)
+
+            setattr(self, 'ei_cell_0', EiRNNCell(28, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1))
+
+            # Hidden layers
+            for i in range(1, self.num_layers + 1):
+                setattr(self, f'ei_cell_{i}',EiRNNCell(hidden_size, hidden_size, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, exponentiated=None, 
+                            learn_hidden_init=False, homeostasis=homeostasis, ni_i2h=0.1, ni_h2h=0.1))
+                                        
+            
+            self.relu = nn.ReLU()
             
             
             self.fc_output = EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, use_bias=True)
@@ -79,8 +83,8 @@ class prnn(nn.Module):
             current_var = torch.mean(output**2, axis=-1).mean().item()
 
             # Update moving averages
-            stats_tracker['mu'] = alpha * stats_tracker['mu'] + (1 - alpha) * current_mu
-            stats_tracker['var'] = alpha * stats_tracker['var'] + (1 - alpha) * current_var
+            stats_tracker['mu'] = current_mu # alpha * stats_tracker['mu'] + (1 - alpha) * current_mu
+            stats_tracker['var'] = current_var # alpha * stats_tracker['var'] + (1 - alpha) * current_var
 
             # Increment hook count for this layer
             layer_data['hook_count'] += 1
@@ -122,33 +126,34 @@ class prnn(nn.Module):
 
     def register_hooks(self):
         if self.is_dann:
-            for i in range(0, self.num_layers):
+            for i in range(0, self.num_layers + 1):
                 setattr(self, f'ei_cell_{i}_hook', getattr(self, f'ei_cell_{i}').register_forward_hook(self.list_forward_hook(layername=f'ei_cell_{i}')))
 
 
     def remove_hooks(self):
         if self.is_dann:
-            for i in range(0, self.num_layers):
+            for i in range(0, self.num_layers + 1):
                 getattr(self, f'ei_cell_{i}_hook').remove()
 
     # get loss values from all fc layers
     def get_local_loss(self):
         total_local_loss = 0
         if self.is_dann:
-            for i in range(0, self.num_layers):
+            for i in range(0, self.num_layers + 1):
                 total_local_loss = total_local_loss + getattr(self, f'ei_cell_{i}').local_loss_value
             return total_local_loss / self.num_layers
 
         return total_local_loss
 
     def reset_hidden(self, batch_size):
-        self.ei_cell_0.reset_hidden(requires_grad=True, batch_size=batch_size)
-        self.ei_cell_1.reset_hidden(requires_grad=True, batch_size=batch_size)
-        self.ei_cell_2.reset_hidden(requires_grad=True, batch_size=batch_size)
+
+        if self.is_dann:
+            for i in range(0, self.num_layers + 1):
+                setattr(self, f'ei_cell_{i}_hook', getattr(self, f'ei_cell_{i}').reset_hidden(requires_grad=True, batch_size=batch_size))
     
     def forward(self, x):
         x_rnn = self.ei_cell_0(x)
-        for i in range(1, self.num_layers):
+        for i in range(1, self.num_layers+1):
             pre_activation = getattr(self, f'ei_cell_{i}')(x_rnn)
             if self.nonlinearity is not None:
                 x_rnn = self.nonlinearity(pre_activation)

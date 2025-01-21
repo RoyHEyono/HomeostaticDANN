@@ -14,7 +14,7 @@
 
 # Grid parameters
 brightness_factors=(0 0.85)
-export LAMBDA_HOMEOS=0.01 # THIS IS WHAT NEEDS TO BE CHANGED IN THE SCRIPT
+export LAMBDA_HOMEOS=0.001 # THIS IS WHAT NEEDS TO BE CHANGED IN THE SCRIPT
 export SHUNTING=1
 export NORMTYPE_DETACH=0
 homeostasis_values=(1)

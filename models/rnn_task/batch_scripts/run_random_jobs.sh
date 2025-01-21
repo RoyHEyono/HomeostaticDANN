@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-99  # 100 random configurations
+#SBATCH --array=0-19  # 20 random configurations
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -50,11 +50,11 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/rnn_task/src/train.py \
   --model.is_dann=1 \
   --opt.use_sep_bias_gain_lrs=0 \
   --exp.wandb_project=RNN_DANN_SWEEP \
-  --model.implicit_homeostatic_loss=0 \
+  --model.implicit_homeostatic_loss=1 \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \
+  --model.excitation_training=1 \
   # --exp.name='explicit_loss_models' \
   # --exp.save_model=1
   # --model.shunting=$shunting \
-  # --model.excitation_training=1 \
   # --model.normtype_detach=$normtype_detach \
