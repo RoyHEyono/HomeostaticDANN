@@ -10,9 +10,7 @@
 #SBATCH --job-name=homeostatic_sweep_config_run
 
 # Load environment
-. /etc/profile
-module load anaconda/3
-conda activate ffcv_eg
+. ~/HomeostaticDANN/load_venv.sh
 
 # Retrieve grid configuration parameters
 grid_index=$GRID_INDEX
@@ -53,7 +51,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=0 \
-  --exp.wandb_project=Luminosity_NAISYS \
+  --exp.wandb_project=Luminosity_NAISYS_GradientAdjustedHomeostasis \
   --model.implicit_homeostatic_loss=0 \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \

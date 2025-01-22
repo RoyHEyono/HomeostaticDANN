@@ -10,9 +10,7 @@
 #SBATCH --job-name=run_grid_configs_homeostasis
 
 # Load environment
-. /etc/profile
-module load anaconda/3
-conda activate ffcv_eg
+. ~/HomeostaticDANN/load_venv.sh
 
 # Grid parameters
 brightness_factors=(0 1)

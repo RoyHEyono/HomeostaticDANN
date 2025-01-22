@@ -83,7 +83,7 @@ Section('model', 'Model Parameters').params(
     normtype_detach=Param(int,'train model with detached layernorm', default=0),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
-    homeostasis=Param(int,'homeostasis', default=0),
+    homeostasis=Param(int,'homeostasis', default=1),
     shunting=Param(int,'divisive inhibition', default=0),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
