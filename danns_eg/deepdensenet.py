@@ -164,7 +164,15 @@ class CustomLayerNormBackward(nn.Module):
     
     def forward(self, x):
         self.x =  x.detach()
-        return x
+        
+        with torch.no_grad():
+            mean = x.mean(dim=-1, keepdim=True)
+            var = x.var(dim=-1, keepdim=True, unbiased=False)
+        
+        # Normalize the input
+        x_norm = (x - mean) / torch.sqrt(var + 1e-5)
+        
+        return x_norm
 
     def backward_hook(self, module, grad_input, grad_output):
         g_out = grad_output[0]  # Gradient passed from next layer
@@ -176,7 +184,7 @@ class CustomLayerNormBackward(nn.Module):
         
         # Normalize gradients
         g_centered = g_out - g_out.mean(dim=1, keepdim=True)
-        g_decorrelated = g_centered # - (g_out * x_mean).sum(dim=1, keepdim=True) * x_mean / D
+        g_decorrelated = g_centered - (g_out * x_mean).sum(dim=1, keepdim=True) * x_mean / D
         g_scaled = g_decorrelated / torch.sqrt(x_var + 1e-5)
         
         return (g_scaled,)
