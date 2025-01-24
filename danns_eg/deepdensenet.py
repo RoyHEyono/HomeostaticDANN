@@ -21,12 +21,12 @@ class DeepDenseDANN(nn.Module):
 
         if self.is_dann:
 
-            setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+            setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, nonlinearity=CustomLayerNormBackward() if homeostasis else None,  ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
                                         train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
 
             # Hidden layers
             for i in range(2, self.num_layers + 1):
-                setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+                setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, nonlinearity=CustomLayerNormBackward() if homeostasis else None, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
                                         train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
                                         
             
@@ -79,12 +79,12 @@ class DeepDenseDANN(nn.Module):
             Normalize gradients and compute the variance of the layer's forward activations.
             """
 
-            # Normalize the gradients: NEEDS TO BE TESTED
-            if grad_input[0] is not None:
-                srqt_var = torch.sqrt((module.saved_activations['fc1']).var(1) + module.epsilon) # temporary, we should change this to something dynamic
-                srqt_var = srqt_var.view(-1, 1)  # Shape becomes [32, 1]
-                normalized_grad_input = ((grad_input[0] - grad_input[0].mean(dim=1, keepdim=True)) / srqt_var,)
-                return normalized_grad_input
+            # # Normalize the gradients: NEEDS TO BE TESTED
+            # if grad_input[0] is not None:
+            #     srqt_var = torch.sqrt((module.saved_activations['fc1']).var(1) + module.epsilon) # temporary, we should change this to something dynamic
+            #     srqt_var = srqt_var.view(-1, 1)  # Shape becomes [32, 1]
+            #     normalized_grad_input = ((grad_input[0] - grad_input[0].mean(dim=1, keepdim=True)) / srqt_var,)
+            #     return normalized_grad_input
         
         return gradient_normalization_with_variance_hook
 
@@ -102,6 +102,7 @@ class DeepDenseDANN(nn.Module):
             for i in range(1, self.num_layers + 1):
                 getattr(self, f'fc{i}_hook').remove()
                 getattr(self, f'fc{i}_hook_backward').remove()
+                getattr(self, f'fc{i}').nonlinearity.remove_hook()
             getattr(self, f'fc_output_hook_backward').remove()
 
     # get loss values from all fc layers
@@ -152,3 +153,36 @@ def net(p:dict):
         model = DeepDenseDANN(input_dim, width, num_class, configs=p, num_layers=2, homeostasis=p.model.homeostasis, nonlinearity=p.model.normtype, is_dann=p.model.is_dann)
 
     return model
+
+
+class CustomLayerNormBackward(nn.Module):
+    def __init__(self):
+        super(CustomLayerNormBackward, self).__init__()
+
+        # Call the register hook function during initialization
+        self.register_hook()
+    
+    def forward(self, x):
+        self.x =  x.detach()
+        return x
+
+    def backward_hook(self, module, grad_input, grad_output):
+        g_out = grad_output[0]  # Gradient passed from next layer
+        N, D = g_out.shape
+        
+        # Simulate stored statistics (replace with actual stats if available)
+        x_mean = self.x.mean(dim=1, keepdim=True)  # Mock input mean
+        x_var = self.x.var(dim=1, keepdim=True, unbiased=False)  # Mock input variance
+        
+        # Normalize gradients
+        g_centered = g_out - g_out.mean(dim=1, keepdim=True)
+        g_decorrelated = g_centered # - (g_out * x_mean).sum(dim=1, keepdim=True) * x_mean / D
+        g_scaled = g_decorrelated / torch.sqrt(x_var + 1e-5)
+        
+        return (g_scaled,)
+
+    def register_hook(self):
+        self.hook = self.register_full_backward_hook(self.backward_hook)
+    
+    def remove_hook(self):
+        self.hook.remove()

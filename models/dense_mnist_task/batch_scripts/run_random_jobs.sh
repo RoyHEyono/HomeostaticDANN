@@ -44,7 +44,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --opt.lambda_homeo=$lambda_homeo \
   --model.normtype=$normtype \
   --model.normtype_detach=$normtype_detach \
-  --model.task_opt_inhib=0 \
+  --model.task_opt_inhib=1 \
   --model.homeostasis=$homeostasis \
   --model.shunting=$shunting \
   --model.excitation_training=1 \

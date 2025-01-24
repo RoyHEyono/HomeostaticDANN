@@ -104,7 +104,7 @@ Section('opt', 'optimiser parameters').params(
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0.01), #0.001
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0), #0.001
     lambda_homeo_var=Param(float, 'lambda homeostasis', default=1),
 )
 
