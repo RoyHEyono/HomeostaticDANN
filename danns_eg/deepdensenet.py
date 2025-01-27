@@ -181,10 +181,12 @@ class CustomLayerNormBackward(nn.Module):
         # Simulate stored statistics (replace with actual stats if available)
         x_mean = self.x.mean(dim=1, keepdim=True)  # Mock input mean
         x_var = self.x.var(dim=1, keepdim=True, unbiased=False)  # Mock input variance
+
+        x_normalized = (self.x - x_mean) / torch.sqrt(x_var + 1e-5)
         
         # Normalize gradients
         g_centered = g_out - g_out.mean(dim=1, keepdim=True)
-        g_decorrelated = g_centered - (g_out * x_mean).sum(dim=1, keepdim=True) * x_mean / D
+        g_decorrelated = g_centered - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
         g_scaled = g_decorrelated / torch.sqrt(x_var + 1e-5)
         
         return (g_scaled,)
