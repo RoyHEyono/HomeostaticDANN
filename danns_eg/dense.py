@@ -276,19 +276,33 @@ class LocalLossMean(nn.Module):
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
             mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
+            var = torch.var(inputs, dim=1, keepdim=True, unbiased=False)
+            std = torch.std(inputs, dim=1, keepdim=True)
 
             # Define the target values (zero mean and unit standard deviation)
             target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
             target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
+            target_var = torch.ones(var.shape, dtype=inputs.dtype, device=inputs.device)
 
             # print(f"mean: {torch.mean(mean)}, var: {torch.mean(mean_squared - mean**2)}")
             
             
             # Calculate the loss based on the L2 distance from the target values
-            loss = lambda_mean * ( self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared))
+            #loss = lambda_mean * ( self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared))
             #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
+            #loss = lambda_mean * self.criterion(mean, target_mean)
+
+            # # Mean term: (mean / std)^2
+            # mean_term = (mean / std) ** 2  # Shape: (batch_size,)
+
+            # # Variance term: (var - 1)^2
+            mean_term = mean ** 2  # Shape: (batch_size,)
+            var_term = (var - 1) ** 2  # Shape: (batch_size,)
+
+            # # Combined loss: Average over the batch
+            # loss = (mean_term + var_term)  # Scalar
             
-            return loss.mean()
+            return lambda_mean * self.criterion(var, target_var), self.criterion(var, target_var).item()
 
 
 class EiDenseLayerHomeostatic(BaseModule):

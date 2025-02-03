@@ -86,8 +86,8 @@ Section('model', 'Model Parameters').params(
     homeostasis=Param(int,'homeostasis', default=1),
     shunting=Param(int,'divisive inhibition', default=0),
     excitation_training=Param(int,'training excitatory layers', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
-    task_opt_inhib=Param(int,'train inhibition model on task loss', default=1),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
+    task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     hidden_layer_width=Param(int,'number of hidden layers', default=500),
@@ -104,8 +104,8 @@ Section('opt', 'optimiser parameters').params(
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0), #0.001
-    lambda_homeo_var=Param(float, 'lambda homeostasis', default=1),
+    lambda_homeo=Param(float, 'lambda homeostasis', default=1), #0.001
+    lambda_homeo_var=Param(float, 'lambda homeostasis', default=100),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
@@ -215,17 +215,10 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
         if p.model.homeostasis:
             for name, param in model.named_parameters():
                 if param.requires_grad:
-                    if 'Wix' in name or 'Wei' in name or 'alpha' in name:
-                        if 'fc_output' not in name:
-                            if p.model.task_opt_inhib:
-                                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0] + torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
-                            else:
-                                param.grad = torch.autograd.grad(scaler.scale(local_loss), param, retain_graph=True)[0]
-                            grad_norm = param.grad.norm(2).item()  # L2 norm
-                            grad_norms[f"grad_norm/{name}"] = grad_norm
-                            weight_norm = param.norm(2).item()  # L2 norm of the weights
-                            weight_norms[f"weight_norm/{name}"] = weight_norm
-                            continue
+                    if ('Wix' in name or 'Wei' in name) and 'fc_output' not in name:
+                        if p.model.task_opt_inhib:
+                            param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                        continue
                     
                     if p.model.excitation_training:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
@@ -338,8 +331,8 @@ def train_model(p):
         #print(scheduler.get_last_lr())
     return results 
 
-def build_model(p):
-    model = deepdensenets.net(p)
+def build_model(p, scaler):
+    model = deepdensenets.net(p, scaler)
     #model = predictivernn.net(p)
     return model
 
@@ -380,14 +373,15 @@ if __name__ == "__main__":
                 name += f"wix:{p.opt.lr} wei:{p.opt.lr}"
 
     loaders = get_dataloaders(p)
-    model = build_model(p)
+    scaler = GradScaler()
+    model = build_model(p, scaler)
     model.register_hooks() # Register the forward hooks
     model = model.cuda()
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     EPOCHS = p.train.epochs
     opt = get_optimizer(p, model)
     iters_per_epoch = len(loaders['train'])
-    scaler = GradScaler()
+    
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
     loss_fn_no_reduction = CrossEntropyLoss(label_smoothing=0.1, reduction='none')

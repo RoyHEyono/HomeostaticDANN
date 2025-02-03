@@ -10,9 +10,7 @@
 #SBATCH --job-name=run_grid_configs_no_homeostasis
 
 # Load environment
-. /etc/profile
-module load anaconda/3
-conda activate ffcv_eg
+. ~/HomeostaticDANN/load_venv.sh
 
 # Grid parameters
 brightness_factors=(0 1)
@@ -37,6 +35,8 @@ export BRIGHTNESS_FACTOR=$brightness_factor
 export NORMTYPE=1
 export HOMEOSTASIS=0  # Fixed to 0
 export LAMBDA_HOMEOS=1 # Fixed to 1 But not functional because homeostasis is deactivated
+export NORMTYPE_DETACH=0
+export SHUNTING=0
 
 # Submit random jobs with the fixed set of random parameters
 sbatch --export=ALL run_random_jobs.sh

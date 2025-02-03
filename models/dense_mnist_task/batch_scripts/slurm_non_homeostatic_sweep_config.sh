@@ -15,7 +15,7 @@ module load anaconda/3
 conda activate ffcv_eg
 
 # Grid parameters
-brightness_factors=(0.25 0.75)
+brightness_factors=(0 1)
 homeostasis_values=(0)
 normtypes=(0 1)
 export SHUNTING=1
@@ -36,7 +36,7 @@ normtype=${normtypes[$normtype_idx]}
 export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
 export NORMTYPE=$normtype
-export NORMTYPE_DETACH=1
+export NORMTYPE_DETACH=0
 export HOMEOSTASIS=0  # Fixed to 0
 export LAMBDA_HOMEOS=1 # Fixed to 1 But not functional because homeostasis is deactivated
 
