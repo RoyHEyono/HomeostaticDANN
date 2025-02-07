@@ -353,9 +353,11 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.epsilon =  1e-6
         self.divisive_inh = shunting
 
+        self.initialize = False
+
         if self.affine:
-            self.gamma = nn.Parameter(torch.ones(self.ne)) 
-            self.beta = nn.Parameter(torch.zeros(self.ne))
+            self.gamma = nn.Parameter(torch.ones(self.ne), requires_grad=True) 
+            self.beta = nn.Parameter(torch.zeros(self.ne), requires_grad=True)
         
         # init and define bias as 0, split into pos, neg if using eg
         if self.use_bias:
@@ -438,6 +440,12 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.hei = torch.matmul(self.relu(self.hi), self.Wei.T)
         self.z = self.hex - self.hei # Temporary solution
 
+        # if not self.initialize:
+        #     self.Wex_proj_random = self.Wex.clone().detach()
+        #     self.initialize = True
+
+        # self.excitatory_var = torch.matmul(x, self.Wex_proj_random.T).var(dim=-1, keepdim=True, unbiased=False).detach()
+
         if self.divisive_inh:
 
             self.exp_alpha = torch.exp(self.alpha) # 1 x ni
@@ -457,7 +465,7 @@ class EiDenseLayerHomeostatic(BaseModule):
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
-        
+
         return self.h
 
         

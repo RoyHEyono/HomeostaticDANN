@@ -50,9 +50,9 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.excitation_training=1 \
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
-  --opt.use_sep_bias_gain_lrs=0 \
+  --opt.use_sep_bias_gain_lrs=1 \
   --exp.wandb_project=Luminosity_NAISYS_GradientAdjustedHomeostasis \
-  --model.implicit_homeostatic_loss=1 \
+  --model.implicit_homeostatic_loss=0 \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \
   # --exp.name='explicit_loss_models' \

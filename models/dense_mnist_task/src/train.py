@@ -79,14 +79,14 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=1),
+    normtype=Param(int,'train model with layernorm', default=0),
     normtype_detach=Param(int,'train model with detached layernorm', default=0),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
     shunting=Param(int,'divisive inhibition', default=0),
     excitation_training=Param(int,'training excitatory layers', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
@@ -101,10 +101,10 @@ Section('opt', 'optimiser parameters').params(
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
     lr=Param(float, 'lr and Wex if dann', default=0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
-    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=0),
+    use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=1),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=1), #0.001
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0.001), #0.001
     lambda_homeo_var=Param(float, 'lambda homeostasis', default=100),
 )
 
@@ -114,8 +114,8 @@ Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).p
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(
-    b=Param(float,'lr for bias', default=0.005),
-    g=Param(float,'lr for gains', default=0.005),
+    b=Param(float,'lr for bias', default=0.9),
+    g=Param(float,'lr for gains', default=0.9),
 ) 
 
 Section('exp', 'General experiment details').params(
@@ -213,14 +213,20 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
         weight_norms = {}
 
         if p.model.homeostasis:
+
+            
             for name, param in model.named_parameters():
+                
+                # if epoch > 1:
+                #     model.switch_on_ln = False
+                
                 if param.requires_grad:
-                    if ('Wix' in name or 'Wei' in name) and 'fc_output' not in name:
+                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name) and 'fc_output' not in name:
                         if p.model.task_opt_inhib:
                             param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                         continue
-                    
-                    if p.model.excitation_training:
+
+                    if p.model.excitation_training: #and epoch > 0:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                         grad_norm = param.grad.norm(2).item()  # L2 norm
                         grad_norms[f"grad_norm/{name}"] = grad_norm

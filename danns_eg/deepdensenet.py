@@ -21,19 +21,22 @@ class DeepDenseDANN(nn.Module):
         self.scaler = scaler
         self.homeostasis = homeostasis
         self.local_loss_fn = danns_eg.dense.LocalLossMean(configs.model.hidden_layer_width, nonlinearity_loss=configs.model.implicit_homeostatic_loss)
+        self.ln_shell = CustomLayerNormBackward()
+        self.switch_on_ln = True
 
         if self.is_dann:
 
-            setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, nonlinearity=CustomLayerNormBackward() if homeostasis else None,  ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+            setattr(self, 'fc1', EiDenseLayerHomeostatic(input_size, hidden_size, homeostasis=homeostasis, nonlinearity=None,  ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo , lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
                                         train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
 
             # Hidden layers
             for i in range(2, self.num_layers + 1):
-                setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, nonlinearity=CustomLayerNormBackward() if homeostasis else None, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
+                setattr(self, f'fc{i}', EiDenseLayerHomeostatic(hidden_size, hidden_size, homeostasis=homeostasis, nonlinearity=None, ni=ni, split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=configs.opt.use_sep_bias_gain_lrs,
                                         train_exc_homeo=configs.model.homeo_opt_exc, use_bias=True, implicit_loss=configs.model.implicit_homeostatic_loss, shunting=shunting))
                                         
             
             self.relu = nn.ReLU()
+            
             setattr(self, f'fc_output', EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=False,
                                         use_bias=True))
         else:
@@ -61,7 +64,9 @@ class DeepDenseDANN(nn.Module):
             # get mean and variance of the output on axis 1 and append to output list
             mu = torch.mean(output, axis=-1).mean().item()
             # Second moment instead of variance
-            var = torch.mean(output**2, axis=-1).mean().item()
+            var = output.var(dim=-1, keepdim=True, unbiased=False).mean().item()
+        
+            # var = torch.var(output, axis=-1, unbiased=False).mean().item()
 
             if self.configs.exp.use_wandb: 
                 if self.register_eval:
@@ -75,7 +80,7 @@ class DeepDenseDANN(nn.Module):
                                                 self.configs.opt.lambda_homeo_var)
 
                 for name, param in layer.named_parameters():
-                    if param.requires_grad and ('Wix' in name or 'Wei' in name) and 'fc_output' not in name:
+                    if param.requires_grad and ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name) and 'fc_output' not in name:
                         param.grad = torch.autograd.grad(self.scaler.scale(local_loss), param, retain_graph=True)[0]
 
 
@@ -90,23 +95,27 @@ class DeepDenseDANN(nn.Module):
         if self.is_dann:
             for i in range(1, self.num_layers + 1):
                 getattr(self, f'fc{i}_hook').remove()
-                getattr(self, f'fc{i}').nonlinearity.remove_hook()
+                getattr(self, 'ln_shell').remove_hook()
 
     def set_homeostatic_temp(self, lmbda):
         for i in range(1, self.num_layers + 1):
             getattr(self, f'fc{i}').set_lambda(lmbda)
     
     def forward(self, x):
+        self.x = x.clone()
         for i in range(1, self.num_layers + 1):
-            pre_activation = getattr(self, f'fc{i}')(x)
+            x = getattr(self, f'fc{i}')(x)
+
+            if self.homeostasis:
+                x = self.ln_shell(x)
+
             if self.nonlinearity is not None:
-                x = self.nonlinearity(pre_activation)
-                x = self.relu(x)
-            else:
-                x = self.relu(pre_activation)
+                x = self.nonlinearity(x)
+
+            x = self.relu(x)
 
         x = getattr(self, f'fc_output')(x)
-        return x, pre_activation
+        return x, getattr(self, f'fc{i}')(self.x)
 
 def net(p:dict, scaler):
 
@@ -165,7 +174,8 @@ class CustomLayerNormBackward(nn.Module):
         # Normalize gradients
         g_centered = g_out - g_out.mean(dim=1, keepdim=True)
         g_decorrelated = g_centered # NOTE: TEMP - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
-        g_scaled = g_decorrelated / torch.sqrt(x_var + 1e-5)
+        g_scaled = g_decorrelated / torch.sqrt(x_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
+        # g_scaled = g_decorrelated / torch.sqrt(self.excitatory_var + 1e-5)
         
         return (g_scaled,)
 
