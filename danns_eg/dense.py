@@ -360,20 +360,12 @@ class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two laye
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
-        # self.register_parameter('Wii', nn.Parameter(torch.empty(self.ni,self.ni), requires_grad=True))
         self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input), requires_grad=True if self.homeostasis or self.output else False)
         self.Wei = nn.Parameter(torch.empty(self.ne,self.ni), requires_grad=True if self.homeostasis or self.output else False)
         if shunting:
             self.alpha = nn.Parameter(torch.ones(size=(1, self.ni))) # row vector
-        # self.Wix = nn.Linear(self.n_input, self.ni)
-        # self.Wei = nn.Linear(self.ni,self.ne, bias=False)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
-        # self.selu = nn.SELU()
-        # self.leakyrelu = nn.LeakyReLU(negative_slope=-0.5)
-        # self.softplus = nn.Softplus(beta=0.5)
-        # self.mish = nn.Mish()
-        # self.elu = nn.ELU()
         self.local_loss_value = 0
         self.epsilon =  1e-6
         self.divisive_inh = shunting

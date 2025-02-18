@@ -32,6 +32,7 @@ import torch.nn as nn
 from torch.amp import GradScaler, autocast
 from torch.nn import CrossEntropyLoss
 from torch.optim import lr_scheduler, Adam
+import torch.nn.functional as F
 
 from danns_eg.data.dataloaders import get_dataloaders
 #from data.imagenet_ffcv import ImagenetFfcvDataModule, IMAGENET_MEAN
@@ -189,8 +190,29 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
 
         model.train()
         opt.zero_grad(set_to_none=True)
-          
 
+        # TEMP: Switch Off Homeostasis
+        Wex_grad = dict()
+        model.set_homeostasis(0)
+        model.set_ln(1)
+        model.set_wandb(0)
+        with autocast("cuda"):
+            ims, labs = ims.squeeze(1).cuda(), labs.cuda()
+            out = model(ims)
+            loss = loss_fn(out, labs)
+        
+        for name, param in model.named_parameters():
+            if 'Wex' in name:
+                if param.requires_grad:
+                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                    Wex_grad[name] = param.grad.view(-1)
+        
+        model.set_homeostasis(1)
+        model.set_ln(None)
+        model.set_wandb(p.exp.use_wandb)
+        opt.zero_grad(set_to_none=True)
+        # This is the end of this....
+          
         with autocast("cuda"):
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
@@ -230,12 +252,13 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
 
                         continue
 
-                    if p.model.excitation_training and epoch > 25:
+                    if p.model.excitation_training: # and epoch > 25:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                         grad_norm = param.grad.norm(2).item()  # L2 norm
                         grad_norms[f"grad_norm/{name}"] = grad_norm
                         weight_norm = param.norm(2).item()  # L2 norm of the weights
                         weight_norms[f"weight_norm/{name}"] = weight_norm
+                        if 'Wex' in name: grad_norms[f"grad_norm/{name}_alignment"] = F.cosine_similarity(param.grad.view(-1), Wex_grad[name], dim=0).item()
                     else:
                         param.grad = torch.autograd.grad(scaler.scale(loss*0), param, retain_graph=True)[0]
         else:

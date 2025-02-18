@@ -20,11 +20,11 @@ class DeepDenseDANN(nn.Module):
         self.saved_activations = dict()
         self.scaler = scaler
         self.homeostasis = homeostasis
+        self.hidden_size = hidden_size
         self.local_loss_fn = danns_eg.dense.LocalLossMean(configs.model.hidden_layer_width, nonlinearity_loss=configs.model.implicit_homeostatic_loss)
-        # self.ln_shell = CustomLayerNormBackward()
-        self.switch_on_ln = True
-        self.trigger_homeostasis = False
         self.local_loss_val = 0
+        self.nonlinearity = nonlinearity
+        self.wandb_log = configs.exp.use_wandb
 
         if self.is_dann:
 
@@ -56,9 +56,9 @@ class DeepDenseDANN(nn.Module):
 
         self.evaluation_mode = False
         if detachnorm:
-            self.nonlinearity = LayerNormalize(hidden_size) if nonlinearity else None
+            self.ln = LayerNormalize(hidden_size) if nonlinearity else None
         else:
-            self.nonlinearity = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
+            self.ln = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
         self.configs = configs
         self.register_eval = False
     
@@ -71,25 +71,17 @@ class DeepDenseDANN(nn.Module):
             mu = torch.mean(total_out, axis=-1).mean().item()
             # Second moment instead of variance
             var = total_out.var(dim=-1, keepdim=True, unbiased=False).mean().item()
-        
-            # var = torch.var(output, axis=-1, unbiased=False).mean().item()
 
-            if self.configs.exp.use_wandb: 
+            if self.wandb_log: 
                 if self.register_eval:
                     wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
                 else:
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
 
             if self.homeostasis and torch.is_grad_enabled():
-                local_loss, self.local_loss_val = self.local_loss_fn(total_out,
+                _, self.local_loss_val = self.local_loss_fn(total_out,
                                                 self.configs.opt.lambda_homeo, 
                                                 self.configs.opt.lambda_homeo_var)
-                # for name, param in layer.named_parameters():
-                #     if param.requires_grad and ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name) and 'fc_output' not in name:
-                #         print()
-                #         continue
-
-
         return forward_hook
 
     def register_hooks(self):
@@ -103,12 +95,19 @@ class DeepDenseDANN(nn.Module):
                 getattr(self, f'fc{i}_hook').remove()
                 getattr(self, 'ln_shell').remove_hook()
 
-    def set_homeostatic_temp(self, lmbda):
-        for i in range(1, self.num_layers + 1):
-            getattr(self, f'fc{i}').set_lambda(lmbda)
-
     def get_local_val(self):
         return self.local_loss_val
+
+    def set_homeostasis(self, homeostasis):
+        for i in range(1, self.num_layers + 1):
+            getattr(self, f'fc{i}').homeostasis = homeostasis
+    
+    def set_ln(self, activate):
+        self.nonlinearity = activate
+        self.ln = LayerNormalize(self.hidden_size) if activate else None
+    
+    def set_wandb(self, activate):
+        self.wandb_log = activate
     
     def forward(self, x):
         self.x = x.clone()
@@ -116,7 +115,7 @@ class DeepDenseDANN(nn.Module):
             x = getattr(self, f'fc{i}')(x)
 
             if self.nonlinearity is not None:
-                x = self.nonlinearity(x)
+                x = self.ln(x)
 
             x = self.relu(x)
 
