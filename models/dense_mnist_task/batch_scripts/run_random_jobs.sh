@@ -3,7 +3,7 @@
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
-#SBATCH --time=2:30:00
+#SBATCH --time=4:00:00
 #SBATCH --cpus-per-gpu=4
 #SBATCH --output=sbatch_out/random_config_%A_%a.out
 #SBATCH --error=sbatch_err/random_config_%A_%a.err
@@ -34,6 +34,7 @@ hidden_layer_width=$(echo $random_params | python -c "import sys, json; config=j
 python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py \
   --data.brightness_factor=$brightness_factor \
   --train.dataset='fashionmnist' \
+  --train.epochs=250 \
   --opt.use_sep_inhib_lrs=1 \
   --opt.lr=$lr \
   --opt.inhib_lrs.wei=$lr_wei \
@@ -52,7 +53,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=1 \
   --exp.wandb_project=Luminosity_NAISYS_GradientAdjustedHomeostasis \
-  --model.implicit_homeostatic_loss=0 \
+  --model.implicit_homeostatic_loss=1 \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \
   # --exp.name='explicit_loss_models' \

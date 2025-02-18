@@ -86,7 +86,7 @@ Section('model', 'Model Parameters').params(
     homeostasis=Param(int,'homeostasis', default=1),
     shunting=Param(int,'divisive inhibition', default=0),
     excitation_training=Param(int,'training excitatory layers', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
@@ -104,18 +104,18 @@ Section('opt', 'optimiser parameters').params(
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=1),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
     nesterov=Param(bool, 'bool for nesterov momentum', False),
-    lambda_homeo=Param(float, 'lambda homeostasis', default=0.001), #0.001
+    lambda_homeo=Param(float, 'lambda homeostasis', default=0.1), #0.001
     lambda_homeo_var=Param(float, 'lambda homeostasis', default=100),
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
-    wei=Param(float,'lr for Wei if dann', default=0.01), # 0.001
-    wix=Param(float,'lr for Wix if dann', default=0.01), # 0.1
+    wei=Param(float,'lr for Wei if dann', default=0.001), # 0.001
+    wix=Param(float,'lr for Wix if dann', default=0.1), # 0.1
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(
-    b=Param(float,'lr for bias', default=0.9),
-    g=Param(float,'lr for gains', default=0.9),
+    b=Param(float,'lr for bias', default=0.5),
+    g=Param(float,'lr for gains', default=0.5),
 ) 
 
 Section('exp', 'General experiment details').params(
@@ -193,9 +193,9 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
 
         with autocast("cuda"):
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-            out, hidden_act = model(ims)
+            out = model(ims)
             loss = loss_fn(out, labs)
-            local_loss, local_loss_val = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
+            # local_loss, local_loss_val = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
 
             batch_correct = out.argmax(1).eq(labs).sum().cpu().item()
             batch_acc = batch_correct / ims.shape[0] * 100
@@ -221,17 +221,23 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                 #     model.switch_on_ln = False
                 
                 if param.requires_grad:
-                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name) and 'fc_output' not in name:
+                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name ) and 'fc_output' not in name: # or 'gamma' in name or 'beta' in name
+
+                        #param = param - lrs_homeostasis[name]*param.grad #Update
+
                         if p.model.task_opt_inhib:
                             param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+
                         continue
 
-                    if p.model.excitation_training: #and epoch > 0:
+                    if p.model.excitation_training and epoch > 25:
                         param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                         grad_norm = param.grad.norm(2).item()  # L2 norm
                         grad_norms[f"grad_norm/{name}"] = grad_norm
                         weight_norm = param.norm(2).item()  # L2 norm of the weights
                         weight_norms[f"weight_norm/{name}"] = weight_norm
+                    else:
+                        param.grad = torch.autograd.grad(scaler.scale(loss*0), param, retain_graph=True)[0]
         else:
             for name, param in model.named_parameters():
                 if param.requires_grad:
@@ -263,10 +269,10 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
             with autocast("cuda"):
                 num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-                out, hidden_act = model(ims)
+                out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
-                _, local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
+                local_loss = model.get_local_val()
                 #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
@@ -282,10 +288,10 @@ def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
                 # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
                 num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-                out, hidden_act = model(ims)
+                out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
-                _, local_loss = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
+                local_loss = model.get_local_val()
                 #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
@@ -354,6 +360,20 @@ def convert_to_dict(obj):
     else:
         return obj
 
+
+class DummyGradScaler:
+    def scale(self, loss):
+        return loss  # Returns the loss unchanged
+    
+    def step(self, optimizer):
+        optimizer.step()  # Just calls optimizer.step() without scaling
+    
+    def update(self):
+        pass  # No-op
+
+    def unscale_(self, optimizer):
+        pass  # No-op
+
 if __name__ == "__main__":
     print(f"We're at: {os.getcwd()}")
     device = train_utils.get_device()
@@ -379,7 +399,7 @@ if __name__ == "__main__":
                 name += f"wix:{p.opt.lr} wei:{p.opt.lr}"
 
     loaders = get_dataloaders(p)
-    scaler = GradScaler()
+    scaler = DummyGradScaler() #GradScaler()
     model = build_model(p, scaler)
     model.register_hooks() # Register the forward hooks
     model = model.cuda()

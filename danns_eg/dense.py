@@ -257,7 +257,57 @@ class EiDenseLayer(BaseModule):
             self.h = self.z
         return self.h
 
+class CustomLayerNormBackward(nn.Module):
+    def __init__(self):
+        super(CustomLayerNormBackward, self).__init__()
 
+        # Call the register hook function during initialization
+        self.register_hook()
+        self.Wex_var = 1
+    
+    def forward(self, x):
+        # NOTE: TEMP
+        # self.x =  x.detach()
+        
+        # with torch.no_grad():
+        #     mean = x.mean(dim=-1, keepdim=True)
+        #     var = x.var(dim=-1, keepdim=True, unbiased=False)
+        
+        # # Normalize the input
+        # x_norm = (x - mean) / torch.sqrt(var + 1e-5)
+        
+        # return x_norm
+
+        # self.x = x
+
+        return x
+    
+    def setVar(self, variance):
+        self.Wex_var = variance
+
+    def backward_hook(self, module, grad_input, grad_output):
+        g_out = grad_output[0]  # Gradient passed from next layer
+        N, D = g_out.shape
+        
+        # # Simulate stored statistics (replace with actual stats if available)
+        # x_mean = self.x.mean(dim=1, keepdim=True)  # Mock input mean
+        # x_var = self.x.var(dim=1, keepdim=True, unbiased=False)  # Mock input variance
+
+        # x_normalized = (self.x - x_mean) / torch.sqrt(x_var + 1e-5)
+        
+        # Normalize gradients
+        g_centered = g_out - g_out.mean(dim=1, keepdim=True)
+        g_decorrelated = g_centered # NOTE: TEMP - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
+        g_scaled = g_decorrelated / torch.sqrt(self.Wex_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
+        # g_scaled = g_decorrelated / torch.sqrt(self.excitatory_var + 1e-5)
+        
+        return (g_scaled,)
+    
+    def register_hook(self):
+        self.hook = self.register_full_backward_hook(self.backward_hook)
+    
+    def remove_hook(self):
+        self.hook.remove()
 class LocalLossMean(nn.Module):
         def __init__(self, hidden_size, nonlinearity_loss=False):
             super(LocalLossMean, self).__init__()
@@ -267,50 +317,22 @@ class LocalLossMean(nn.Module):
             #self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
             
         def forward(self, inputs, lambda_mean=1, lambda_var=1):
-
-            if not self.nonlinearity_loss:
-                #kl_loss_val = self.kl_loss(torch.log_softmax(inputs, dim=-1), torch.log_softmax(self.nonlinearity(inputs), dim=-1))
-                #cosine_loss = 1 - F.cosine_similarity(inputs, self.nonlinearity(inputs), dim=-1).mean()
-                mse = lambda_mean * self.criterion(inputs, self.nonlinearity(inputs))
-                return mse, self.criterion(inputs, self.nonlinearity(inputs)).item() # + kl_loss_val + cosine_loss
             
             mean = torch.mean(inputs, dim=1, keepdim=True)
-            mean_squared = torch.mean(torch.square(inputs), dim=1, keepdim=True)
             var = torch.var(inputs, dim=1, keepdim=True, unbiased=False)
-            std = torch.std(inputs, dim=1, keepdim=True)
-
-            # Define the target values (zero mean and unit standard deviation)
-            target_mean = torch.zeros(mean.shape, dtype=inputs.dtype, device=inputs.device)
-            target_mean_squared = torch.ones(mean_squared.shape, dtype=inputs.dtype, device=inputs.device)
-            target_var = torch.ones(var.shape, dtype=inputs.dtype, device=inputs.device)
-
-            # print(f"mean: {torch.mean(mean)}, var: {torch.mean(mean_squared - mean**2)}")
             
-            
-            # Calculate the loss based on the L2 distance from the target values
-            #loss = lambda_mean * ( self.criterion(mean, target_mean)  + lambda_var * self.criterion(mean_squared, target_mean_squared))
-            #loss = lambda_homeo * (torch.sqrt(criterion(mean_squared, target_mean_squared)))
-            #loss = lambda_mean * self.criterion(mean, target_mean)
-
-            # # Mean term: (mean / std)^2
-            # mean_term = (mean / std) ** 2  # Shape: (batch_size,)
-
-            # # Variance term: (var - 1)^2
             mean_term = mean ** 2  # Shape: (batch_size,)
             var_term = (var - 1) ** 2  # Shape: (batch_size,)
-
-            # # Combined loss: Average over the batch
-            # loss = (mean_term + var_term)  # Scalar
             
-            return lambda_mean * self.criterion(var, target_var), self.criterion(var, target_var).item()
+            return lambda_mean * (mean_term + var_term).mean(), (mean_term + var_term).mean().item()
 
 
-class EiDenseLayerHomeostatic(BaseModule):
+class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two layers
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
     def __init__(self, n_input, ne, ni=0.1, homeostasis=False, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, lambda_var=1, affine=False, train_exc_homeo=False,
-                 implicit_loss=False, shunting=False, init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+                 implicit_loss=False, shunting=False, output=False, scaler=None, init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
         ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
@@ -330,14 +352,17 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.train_exc_homeo = train_exc_homeo
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
+        self.output = output
+        self.scaler = scaler
+        self.ln_shell = CustomLayerNormBackward()
 
         self.n_input_with_bias = self.n_input+1
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
         # self.register_parameter('Wii', nn.Parameter(torch.empty(self.ni,self.ni), requires_grad=True))
-        self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input), requires_grad=True)
-        self.Wei = nn.Parameter(torch.empty(self.ne,self.ni), requires_grad=True)
+        self.Wix = nn.Parameter(torch.empty(self.ni,self.n_input), requires_grad=True if self.homeostasis or self.output else False)
+        self.Wei = nn.Parameter(torch.empty(self.ne,self.ni), requires_grad=True if self.homeostasis or self.output else False)
         if shunting:
             self.alpha = nn.Parameter(torch.ones(size=(1, self.ni))) # row vector
         # self.Wix = nn.Linear(self.n_input, self.ni)
@@ -356,7 +381,7 @@ class EiDenseLayerHomeostatic(BaseModule):
         self.initialize = False
 
         if self.affine:
-            self.gamma = nn.Parameter(torch.ones(self.ne), requires_grad=True) 
+            self.gamma = nn.Parameter(torch.ones(self.ne), requires_grad=True)
             self.beta = nn.Parameter(torch.zeros(self.ne), requires_grad=True)
         
         # init and define bias as 0, split into pos, neg if using eg
@@ -436,30 +461,41 @@ class EiDenseLayerHomeostatic(BaseModule):
         """
 
         self.hex = torch.matmul(x, self.Wex.T)
+        
         self.hi = torch.matmul(x, self.Wix.T)
         self.hei = torch.matmul(self.relu(self.hi), self.Wei.T)
-        self.z = self.hex - self.hei # Temporary solution
+        
+        if self.homeostasis:
+            self.z = self.hex
+            if self.use_bias: self.z = self.z + self.b.T
+            self.ln_shell.setVar(self.z.var(dim=1, keepdim=True, unbiased=False).detach())
+            self.z = self.z - self.hei.detach() # This should purely be in the forward pass, no backpropagated gradients at this point
+            # if self.affine: self.z = self.gamma.detach() * self.z + self.beta.detach() # This should purely be in the forward pass, no backpropagated gradients at this point
+            if self.affine: self.z = self.z + self.beta.detach()
+            self.z = self.ln_shell(self.z) # At this point, you should be getting the correct grad_output
+            
+        else:
+            if self.output:
+                self.z = self.hex - self.hei
+            else:
+                self.z = self.hex
+            if self.use_bias: self.z = self.z + self.b.T
 
-        # if not self.initialize:
-        #     self.Wex_proj_random = self.Wex.clone().detach()
-        #     self.initialize = True
+        
+        if self.homeostasis and not self.output and torch.is_grad_enabled():
+            # Compute a local loss for Wei and Wix
+            hi_local = torch.matmul(x.detach(), self.Wix.T)
+            hei_local = torch.matmul(self.relu(hi_local), self.Wei.T)  # Only affects Wei
+            output_local = self.hex.detach() - hei_local
 
-        # self.excitatory_var = torch.matmul(x, self.Wex_proj_random.T).var(dim=-1, keepdim=True, unbiased=False).detach()
+            if self.affine:
+                # output_local = self.gamma * output_local + self.beta
+                output_local = output_local + self.beta
 
-        if self.divisive_inh:
+            local_loss, _ = self.loss_fn(output_local, self.lambda_homeo, self.lambda_var)  # Define your local loss
 
-            self.exp_alpha = torch.exp(self.alpha) # 1 x ni
-
-            # ne x batch = (1xni * ^ne^xni ) @ nix^btch^ +  nex1
-            self.gamma = torch.matmul(self.hi * self.exp_alpha, self.Wei.T) + self.epsilon
-
-            # ne x batch = ne x batch * ne x batch
-            self.z = (1/ self.gamma) * self.z
-
-        if self.use_bias: self.z = self.z + self.b.T
-
-        if self.affine:
-            self.z = self.gamma * self.z + self.beta
+            # Compute gradients for Wei and Wix without affecting preceding layers
+            self.scaler.scale(local_loss).backward()
 
         if self.nonlinearity is not None:
             self.h = self.nonlinearity(self.z)
