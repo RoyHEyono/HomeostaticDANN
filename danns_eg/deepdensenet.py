@@ -41,8 +41,9 @@ class DeepDenseDANN(nn.Module):
             
             self.relu = nn.ReLU()
             
-            setattr(self, f'fc_output', EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=False,
-                                        use_bias=True, output=True, scaler=scaler))
+            # setattr(self, f'fc_output', EiDenseLayerHomeostatic(hidden_size, output_size, nonlinearity=None, ni=max(1,int(output_size*0.1)), split_bias=False, lambda_homeo=configs.opt.lambda_homeo, lambda_var=configs.opt.lambda_homeo_var, affine=False,
+            #                             use_bias=True, output=True, scaler=scaler))
+            setattr(self, f'fc_output', nn.Linear(hidden_size, output_size, bias=True))
         else:
             setattr(self, 'fc1', nn.Linear(input_size, hidden_size, bias=True))
 
@@ -79,7 +80,7 @@ class DeepDenseDANN(nn.Module):
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
 
             if self.homeostasis and torch.is_grad_enabled():
-                _, self.local_loss_val = self.local_loss_fn(total_out,
+                _, self.local_loss_val = self.local_loss_fn(total_out, torch.matmul(input[0], layer.Wex.T).detach(),
                                                 self.configs.opt.lambda_homeo, 
                                                 self.configs.opt.lambda_homeo_var)
         return forward_hook
@@ -104,7 +105,7 @@ class DeepDenseDANN(nn.Module):
     
     def set_ln(self, activate):
         self.nonlinearity = activate
-        self.ln = LayerNormalize(self.hidden_size) if activate else None
+        self.ln = nn.LayerNorm(self.hidden_size, elementwise_affine=False) if activate else None
     
     def set_wandb(self, activate):
         self.wandb_log = activate

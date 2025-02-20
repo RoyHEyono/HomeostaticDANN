@@ -199,6 +199,7 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
         with autocast("cuda"):
             ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
+            Wex_grad["output"] = out.view(-1)
             loss = loss_fn(out, labs)
         
         for name, param in model.named_parameters():
@@ -207,17 +208,15 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                     param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
                     Wex_grad[name] = param.grad.view(-1)
         
-        model.set_homeostasis(1)
-        model.set_ln(None)
+        model.set_homeostasis(p.model.homeostasis)
+        model.set_ln(None if p.model.normtype==0 else 1)
         model.set_wandb(p.exp.use_wandb)
         opt.zero_grad(set_to_none=True)
         # This is the end of this....
           
         with autocast("cuda"):
-            ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
-            # local_loss, local_loss_val = local_loss_fn(hidden_act, p.opt.lambda_homeo, p.opt.lambda_homeo_var)
 
             batch_correct = out.argmax(1).eq(labs).sum().cpu().item()
             batch_acc = batch_correct / ims.shape[0] * 100
@@ -229,27 +228,15 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
             model.set_homeostatic_temp(1-annealing_temp)
             loss = annealing_temp * loss
 
-        
-        
         grad_norms = {}
         weight_norms = {}
 
         if p.model.homeostasis:
-
-            
             for name, param in model.named_parameters():
-                
-                # if epoch > 1:
-                #     model.switch_on_ln = False
-                
                 if param.requires_grad:
-                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name ) and 'fc_output' not in name: # or 'gamma' in name or 'beta' in name
-
-                        #param = param - lrs_homeostasis[name]*param.grad #Update
-
+                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name ) and 'fc_output' not in name:
                         if p.model.task_opt_inhib:
                             param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-
                         continue
 
                     if p.model.excitation_training: # and epoch > 25:
@@ -259,6 +246,8 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                         weight_norm = param.norm(2).item()  # L2 norm of the weights
                         weight_norms[f"weight_norm/{name}"] = weight_norm
                         if 'Wex' in name: grad_norms[f"grad_norm/{name}_alignment"] = F.cosine_similarity(param.grad.view(-1), Wex_grad[name], dim=0).item()
+                        if 'Wex' in name: grad_norms[f"grad_norm/output_alignment"] = F.cosine_similarity(out.view(-1), Wex_grad["output"], dim=0).item()
+                        if 'Wex' in name: grad_norms[f"grad_norm/output_alignment_mse"] = F.mse_loss(out.view(-1), Wex_grad["output"]).item()
                     else:
                         param.grad = torch.autograd.grad(scaler.scale(loss*0), param, retain_graph=True)[0]
         else:
@@ -269,6 +258,9 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
                     grad_norms[f"grad_norm/{name}"] = grad_norm
                     weight_norm = param.norm(2).item()  # L2 norm of the weights
                     weight_norms[f"weight_norm/{name}"] = weight_norm
+                    if 'Wex' in name: grad_norms[f"grad_norm/{name}_alignment"] = F.cosine_similarity(param.grad.view(-1), Wex_grad[name], dim=0).item()
+                    if 'Wex' in name: grad_norms[f"grad_norm/output_alignment"] = F.cosine_similarity(out.view(-1), Wex_grad["output"], dim=0).item()
+                    if 'Wex' in name: grad_norms[f"grad_norm/output_alignment_mse"] = F.mse_loss(out.view(-1), Wex_grad["output"]).item()
             
             #scaler.scale(loss).backward()
         

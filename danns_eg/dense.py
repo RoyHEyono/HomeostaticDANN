@@ -278,7 +278,7 @@ class CustomLayerNormBackward(nn.Module):
         
         # return x_norm
 
-        # self.x = x
+        # # self.x = x
 
         return x
     
@@ -298,7 +298,7 @@ class CustomLayerNormBackward(nn.Module):
         # Normalize gradients
         g_centered = g_out - g_out.mean(dim=1, keepdim=True)
         g_decorrelated = g_centered # NOTE: TEMP - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
-        g_scaled = g_decorrelated / torch.sqrt(self.Wex_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
+        g_scaled = g_decorrelated # / torch.sqrt(self.Wex_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
         # g_scaled = g_decorrelated / torch.sqrt(self.excitatory_var + 1e-5)
         
         return (g_scaled,)
@@ -316,15 +316,16 @@ class LocalLossMean(nn.Module):
             self.criterion = nn.MSELoss()
             #self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
             
-        def forward(self, inputs, lambda_mean=1, lambda_var=1):
+        def forward(self, excitatory_inhibitory_projection, target_excitatory_with_ln, lambda_mean=1, lambda_var=1):
             
-            mean = torch.mean(inputs, dim=1, keepdim=True)
-            var = torch.var(inputs, dim=1, keepdim=True, unbiased=False)
+            mean = torch.mean(excitatory_inhibitory_projection, dim=1, keepdim=True)
+            var = torch.var(excitatory_inhibitory_projection, dim=1, keepdim=True, unbiased=False)
+            inhibitory_loss = self.criterion(excitatory_inhibitory_projection, self.nonlinearity(target_excitatory_with_ln).detach())
             
-            mean_term = mean ** 2  # Shape: (batch_size,)
-            var_term = (var - 1) ** 2  # Shape: (batch_size,)
+            mean_term = torch.log(1 + mean ** 2) # mean ** 2  # Shape: (batch_size,) torch.log(1 + mean ** 2)
+            var_term = torch.log(1 + (var - 1) ** 2) # (var - 1) ** 2  # Shape: (batch_size,)
             
-            return lambda_mean * (mean_term + var_term).mean(), (mean_term + var_term).mean().item()
+            return lambda_mean * (inhibitory_loss + (mean_term + var_term).mean()), (inhibitory_loss).item()
 
 
 class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two layers
@@ -460,12 +461,10 @@ class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two laye
         if self.homeostasis:
             self.z = self.hex
             if self.use_bias: self.z = self.z + self.b.T
-            self.ln_shell.setVar(self.z.var(dim=1, keepdim=True, unbiased=False).detach())
-            self.z = self.z - self.hei.detach() # This should purely be in the forward pass, no backpropagated gradients at this point
-            # if self.affine: self.z = self.gamma.detach() * self.z + self.beta.detach() # This should purely be in the forward pass, no backpropagated gradients at this point
-            if self.affine: self.z = self.z + self.beta.detach()
+            # self.ln_shell.setVar(self.z.var(dim=1, keepdim=True, unbiased=False).detach())
+            self.z = self.z - self.hei.detach()
+            if self.affine: self.z = self.gamma*self.z + self.beta.detach()
             self.z = self.ln_shell(self.z) # At this point, you should be getting the correct grad_output
-            
         else:
             if self.output:
                 self.z = self.hex - self.hei
@@ -475,16 +474,18 @@ class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two laye
 
         
         if self.homeostasis and not self.output and torch.is_grad_enabled():
+            excitatory_local = torch.matmul(x, self.Wex.T).detach()
+            if self.use_bias: excitatory_local = excitatory_local + self.b.T.detach()
             # Compute a local loss for Wei and Wix
             hi_local = torch.matmul(x.detach(), self.Wix.T)
             hei_local = torch.matmul(self.relu(hi_local), self.Wei.T)  # Only affects Wei
-            output_local = self.hex.detach() - hei_local
+            output_local = excitatory_local - hei_local
 
             if self.affine:
                 # output_local = self.gamma * output_local + self.beta
-                output_local = output_local + self.beta
+                output_local = self.gamma*output_local + self.beta
 
-            local_loss, _ = self.loss_fn(output_local, self.lambda_homeo, self.lambda_var)  # Define your local loss
+            local_loss, _ = self.loss_fn(output_local, excitatory_local, self.lambda_homeo, self.lambda_var)  # Define your local loss
 
             # Compute gradients for Wei and Wix without affecting preceding layers
             self.scaler.scale(local_loss).backward()
