@@ -264,6 +264,7 @@ class CustomLayerNormBackward(nn.Module):
         # Call the register hook function during initialization
         self.register_hook()
         self.Wex_var = 1
+        self.backward_computation = 0
     
     def forward(self, x):
         # NOTE: TEMP
@@ -295,13 +296,14 @@ class CustomLayerNormBackward(nn.Module):
 
         # x_normalized = (self.x - x_mean) / torch.sqrt(x_var + 1e-5)
         
-        # Normalize gradients
-        g_centered = g_out - g_out.mean(dim=1, keepdim=True)
-        g_decorrelated = g_centered # NOTE: TEMP - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
-        g_scaled = g_decorrelated # / torch.sqrt(self.Wex_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
-        # g_scaled = g_decorrelated / torch.sqrt(self.excitatory_var + 1e-5)
-        
-        return (g_scaled,)
+        if self.backward_computation:
+            # Normalize gradients
+            g_centered = g_out - g_out.mean(dim=1, keepdim=True)
+            g_decorrelated = g_centered # NOTE: TEMP - ((g_out * x_normalized).sum(dim=1, keepdim=True) * (x_normalized / D))
+            g_scaled = g_decorrelated # / torch.sqrt(self.Wex_var + 1e-5) # NOTE: Maybe in homeostasis, this variance should be the variance of the excitatory component alone
+            # g_scaled = g_decorrelated / torch.sqrt(self.excitatory_var + 1e-5)
+            
+            return (g_scaled,)
     
     def register_hook(self):
         self.hook = self.register_full_backward_hook(self.backward_hook)
@@ -315,17 +317,25 @@ class LocalLossMean(nn.Module):
             self.nonlinearity_loss = nonlinearity_loss
             self.criterion = nn.MSELoss()
             #self.kl_loss = nn.KLDivLoss(reduction='batchmean', log_target=True)
+
+        def cosine_similarity_loss(self, output_1, output_2):
+            return 1 - F.cosine_similarity(output_1.flatten(1), output_2.flatten(1), dim=1).mean()
+
+        def stronger_cosine_loss(self, output_1, output_2):
+            cosine_sim = F.cosine_similarity(output_1.flatten(1), output_2.flatten(1), dim=1)
+            angle = torch.acos(torch.clamp(cosine_sim, -1 + 1e-7, 1 - 1e-7))
+            return angle.mean()
             
         def forward(self, excitatory_inhibitory_projection, target_excitatory_with_ln, lambda_mean=1, lambda_var=1):
             
             mean = torch.mean(excitatory_inhibitory_projection, dim=1, keepdim=True)
             var = torch.var(excitatory_inhibitory_projection, dim=1, keepdim=True, unbiased=False)
-            inhibitory_loss = self.criterion(excitatory_inhibitory_projection, self.nonlinearity(target_excitatory_with_ln).detach())
+            inhibitory_loss = self.cosine_similarity_loss(excitatory_inhibitory_projection, self.nonlinearity(target_excitatory_with_ln).detach())
             
-            mean_term = torch.log(1 + mean ** 2) # mean ** 2  # Shape: (batch_size,) torch.log(1 + mean ** 2)
-            var_term = torch.log(1 + (var - 1) ** 2) # (var - 1) ** 2  # Shape: (batch_size,)
+            mean_term = mean ** 2 # torch.log(1 + mean ** 2) # mean ** 2  # Shape: (batch_size,) torch.log(1 + mean ** 2)
+            var_term = (var - 1) ** 2 # torch.log(1 + (var - 1) ** 2) # (var - 1) ** 2  # Shape: (batch_size,)
             
-            return lambda_mean * (inhibitory_loss + (mean_term + var_term).mean()), (inhibitory_loss).item()
+            return lambda_mean * ((mean_term + var_term).mean()), (inhibitory_loss).item()
 
 
 class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two layers
@@ -356,6 +366,7 @@ class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two laye
         self.output = output
         self.scaler = scaler
         self.ln_shell = CustomLayerNormBackward()
+        self.ln_shell.backward_computation = implicit_loss
 
         self.n_input_with_bias = self.n_input+1
 
@@ -460,16 +471,13 @@ class EiDenseLayerHomeostatic(BaseModule): # Need to decouple this into two laye
         
         if self.homeostasis:
             self.z = self.hex
+            self.ln_shell.setVar(self.z.var(dim=1, keepdim=True, unbiased=False).detach())
             if self.use_bias: self.z = self.z + self.b.T
-            # self.ln_shell.setVar(self.z.var(dim=1, keepdim=True, unbiased=False).detach())
             self.z = self.z - self.hei.detach()
             if self.affine: self.z = self.gamma*self.z + self.beta.detach()
             self.z = self.ln_shell(self.z) # At this point, you should be getting the correct grad_output
         else:
-            if self.output:
-                self.z = self.hex - self.hei
-            else:
-                self.z = self.hex
+            self.z = self.hex - self.hei
             if self.use_bias: self.z = self.z + self.b.T
 
         

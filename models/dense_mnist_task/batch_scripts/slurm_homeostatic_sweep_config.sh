@@ -13,7 +13,7 @@
 . ~/HomeostaticDANN/load_venv.sh
 
 # Grid parameters
-brightness_factors=(0 1)
+brightness_factors=(0 0.75)
 export LAMBDA_HOMEOS=0.1 # THIS IS WHAT NEEDS TO BE CHANGED IN THE SCRIPT
 export SHUNTING=0
 export NORMTYPE_DETACH=0

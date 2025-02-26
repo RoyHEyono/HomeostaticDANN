@@ -87,7 +87,7 @@ Section('model', 'Model Parameters').params(
     homeostasis=Param(int,'homeostasis', default=1),
     shunting=Param(int,'divisive inhibition', default=0),
     excitation_training=Param(int,'training excitatory layers', default=1),
-    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=1),
+    implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
