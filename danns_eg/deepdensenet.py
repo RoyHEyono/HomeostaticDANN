@@ -80,9 +80,8 @@ class DeepDenseDANN(nn.Module):
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
 
             if self.homeostasis and torch.is_grad_enabled():
-                _, self.local_loss_val = self.local_loss_fn(total_out, torch.matmul(input[0], layer.Wex.T).detach(),
-                                                self.configs.opt.lambda_homeo, 
-                                                self.configs.opt.lambda_homeo_var)
+                self.local_loss_val = layer.local_loss_value
+        
         return forward_hook
 
     def register_hooks(self):
