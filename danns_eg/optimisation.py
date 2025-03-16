@@ -60,6 +60,48 @@ from torch import nn, no_grad
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
+def get_optimizer(p, model):
+    params_groups = get_param_groups(model, return_groups_dict=True)
+    # first construct the iterable of param groups
+    parameters = []
+    for k, group in params_groups.items():
+        d = {"params":group, "name":k}
+        
+        if k in ['wex_params', 'wix_params', 'wei_params']:
+            d["positive_only"] = True
+        else: 
+            d["positive_only"] = False
+        
+        if p.opt.use_sep_inhib_lrs:
+            if k == "wix_params": d['lr'] = p.opt.inhib_lrs.wix
+            elif k == "wei_params": d['lr'] = p.opt.inhib_lrs.wei
+        
+        if k == "norm_biases":
+            d['exponentiated_grad'] = False 
+        if p.opt.use_sep_bias_gain_lrs:
+            if k == "norm_biases": 
+                d['lr'] = p.opt.bias_gain_lrs.b
+                print("hard coding non exp grad for biases")
+            elif k == "norm_gains":
+                d['lr'] = p.opt.bias_gain_lrs.g
+                print("hard coding non exp grad for biases")
+        
+        parameters.append(d)
+    
+    if p.opt.algorithm.lower() == "sgd":
+        opt = SGD(parameters, lr = p.opt.lr,
+                   weight_decay=p.opt.wd,
+                   momentum=p.opt.momentum, inhib_momentum=p.opt.inhib_momentum) #,exponentiated_grad=p.opt.exponentiated)  
+        opt.nesterov = p.opt.nesterov
+        # opt.eg_normalise = p.opt.eg_normalise
+        return opt
+
+    elif p.opt.algorithm.lower() == "adamw":
+        #  this should be adapted in future for adamw specific args! 
+        return AdamW(parameters, lr = p.opt.lr,
+                     weight_decay=p.opt.wd,
+                     exponentiated_grad=p.opt.exponentiated) 
+
 def get_param_groups(model, return_groups_dict=False):
     """
     Utility function to seperate model parameters into groups.

@@ -61,6 +61,35 @@ class LayerNormalize(nn.Module):
         
         return x_norm
 
+class MeanNormalizeFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, no_backward):
+        mean = x.mean(dim=-1, keepdim=True)
+        x_norm = x - mean
+        ctx.save_for_backward(mean)
+        ctx.no_backward = no_backward
+        return x_norm
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        mean, = ctx.saved_tensors
+        N = grad_output.shape[-1]
+
+        if ctx.no_backward:
+            return grad_output, None  # Second output corresponds to `no_backward`, which has no gradient
+
+        grad_mean = grad_output.mean(dim=-1, keepdim=True)
+        grad_x = grad_output - grad_mean
+
+        return grad_x, None  # Second `None` is for `no_backward`, which is not trainable
+
+class MeanNormalize(nn.Module):
+    def __init__(self, no_backward=False):
+        super(MeanNormalize, self).__init__()
+        self.no_backward = no_backward
+
+    def forward(self, x):
+        return MeanNormalizeFunction.apply(x, self.no_backward)
 
 
 # main function

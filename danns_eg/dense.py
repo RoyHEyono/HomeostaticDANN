@@ -257,6 +257,103 @@ class EiDenseLayer(BaseModule):
             self.h = self.z
         return self.h
 
+class EDenseLayer(BaseModule):
+    """
+    Class modeling a subtractive feed-forward inhibition layer
+    """
+    def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,use_bias=True, split_bias=False,
+                 init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+        """
+        ne : number of exciatatory outputs
+        ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
+        """
+        super().__init__()
+        self.n_input = n_input
+        self.n_output = ne
+        self.nonlinearity = nonlinearity
+        self.split_bias = split_bias
+        self.use_bias = use_bias
+        self.ne = ne
+        if isinstance(ni, float): self.ni = int(ne*ni)
+        elif isinstance(ni, int): self.ni = ni
+
+        # to-from notation - W_post_pre and the shape is n_output x n_input
+        self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input))
+        
+        # init and define bias as 0, split into pos, neg if using eg
+        if self.use_bias:
+            if self.split_bias: 
+                self.bias_pos = nn.Parameter(torch.ones(self.n_output,1)) 
+                self.bias_neg = nn.Parameter(torch.ones(self.n_output,1)*-1)
+            else:
+                self.bias = nn.Parameter(torch.zeros(self.n_output, 1))
+        else:
+            self.register_parameter('bias', None)
+            self.split_bias = False
+        
+        # try:
+        self.init_weights(**init_weights_kwargs)
+        # except:
+        #     print("Warning: Error initialising weights with default init!")
+
+    @property
+    def W(self):
+        return self.Wex
+
+    @property
+    def b(self):
+        if self.split_bias: 
+            return self.bias_pos + self.bias_neg
+        else: 
+            return self.bias
+    
+    def init_weights(self, numerator=2, ex_distribution="lognormal", k=1):
+        """
+        Initialises inhibitory weights to perform the centering operation of Layer Norm:
+            Wex ~ lognormal or exponential dist
+            Rows of Wix are copies of the mean row of Wex
+            Rows of Wei sum to 1, squashed after being drawn from same dist as Wex.  
+            k : the mean of the lognormal is k*std (as in the exponential dist)
+        """
+        def calc_ln_mu_sigma(mean, var):
+            """
+            Helper function: given a desired mean and var of a lognormal dist 
+            (the func arguments) calculates and returns the underlying mu and sigma
+            for the normal distribution that underlies the desired log normal dist.
+            """
+            mu_ln = np.log(mean**2 / np.sqrt(mean**2 + var))
+            sigma_ln = np.sqrt(np.log(1 + (var /mean**2)))
+            return mu_ln, sigma_ln
+
+        target_std_wex = np.sqrt(numerator*self.ne/(self.n_input*(self.ne-1)))
+        # He initialistion standard deviation derived from var(\hat{z}) = d * ne-1/ne * var(wex)E[x^2] 
+        # where Wix is set to mean row of Wex and rows of Wei sum to 1.
+
+        if ex_distribution =="exponential":
+            exp_scale = target_std_wex # The scale parameter, \beta = 1/\lambda = std
+            Wex_np = np.random.exponential(scale=exp_scale, size=(self.ne, self.n_input))
+        
+        elif ex_distribution =="lognormal":
+            # here is where we decide how to skew the distribution
+            mu, sigma = calc_ln_mu_sigma(target_std_wex*k,target_std_wex**2)
+            Wex_np = np.random.lognormal(mu, sigma, size=(self.ne, self.n_input))
+        
+        
+        self.Wex.data = torch.from_numpy(Wex_np).float()
+
+    def forward(self, x):
+        """
+        x is batch_dim x input_dim, 
+        therefore x.T as W is ne x input_dim ??? Why I got error?
+        """
+        self.z = torch.matmul(x, self.W.T)
+        # if self.b: self.z = self.z + self.b.T
+        if self.use_bias: self.z = self.z + self.b.T
+        if self.nonlinearity is not None:
+            self.h = self.nonlinearity(self.z)
+        else:
+            self.h = self.z
+        return self.h
 class CustomLayerNormBackward(nn.Module):
     def __init__(self):
         super(CustomLayerNormBackward, self).__init__()

@@ -35,7 +35,7 @@ hidden_layer_width=$(echo $random_params | python -c "import sys, json; config=j
 python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py \
   --data.brightness_factor=$brightness_factor \
   --train.dataset='fashionmnist' \
-  --train.epochs=200 \
+  --train.epochs=50 \
   --opt.use_sep_inhib_lrs=1 \
   --opt.lr=$lr \
   --opt.inhib_lrs.wei=$lr_wei \
@@ -53,7 +53,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
   --opt.use_sep_bias_gain_lrs=1 \
-  --exp.wandb_project=Luminosity_NAISYS_GradientAdjustedHomeostasis \
+  --exp.wandb_project=Luminosity_MeanHomeostasis_NoInhibition \
   --model.implicit_homeostatic_loss=$homeostasis_gradient \
   --exp.wandb_entity=project_danns \
   --exp.use_wandb=1 \

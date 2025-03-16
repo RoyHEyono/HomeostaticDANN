@@ -41,10 +41,8 @@ import danns_eg.utils as train_utils
 #import lib.utils
 from danns_eg.sequential import Sequential
 import danns_eg.dense as densenn
-#import models.kakaobrain as kakaobrain
-import danns_eg.resnets as resnets
-import danns_eg.deepdensenet as deepdensenets
-import danns_eg.predictivernn as predictivernn
+import danns_eg.edensenet as edensenet
+import danns_eg.eidensenet as eidensenet
 from danns_eg.optimisation import AdamW, get_linear_schedule_with_warmup, SGD
 import danns_eg.optimisation as optimizer_utils
 #from munch import DefaultMunch
@@ -57,8 +55,6 @@ DANNS_DIR = "/home/mila/r/roy.eyono/danns_eg" # BAD CODE: This needs to be chang
 
 # Concatenate the path to the current file with the path to the danns_eg directory
 SCALE_DIR = f"{DANNS_DIR}/scale_exps"
-
-
 
 Section('train', 'Training related parameters').params(
     dataset=Param(str, 'dataset', default='fashionmnist'),
@@ -80,7 +76,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=1),
+    normtype=Param(int,'train model with layernorm', default=0),
     normtype_detach=Param(int,'train model with detached layernorm', default=1),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
@@ -135,86 +131,18 @@ Section('exp', 'General experiment details').params(
 ) #TODO: Add wandb group param
 
 
-def get_optimizer(p, model):
-    params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
-    # first construct the iterable of param groups
-    parameters = []
-    for k, group in params_groups.items():
-        d = {"params":group, "name":k}
-        
-        if k in ['wex_params', 'wix_params', 'wei_params']:
-            d["positive_only"] = True
-        else: 
-            d["positive_only"] = False
-        
-        if p.opt.use_sep_inhib_lrs:
-            if k == "wix_params": d['lr'] = p.opt.inhib_lrs.wix
-            elif k == "wei_params": d['lr'] = p.opt.inhib_lrs.wei
-        
-        if k == "norm_biases":
-            d['exponentiated_grad'] = False 
-        if p.opt.use_sep_bias_gain_lrs:
-            if k == "norm_biases": 
-                d['lr'] = p.opt.bias_gain_lrs.b
-                print("hard coding non exp grad for biases")
-            elif k == "norm_gains":
-                d['lr'] = p.opt.bias_gain_lrs.g
-                print("hard coding non exp grad for biases")
-        
-        parameters.append(d)
-    
-    if p.opt.algorithm.lower() == "sgd":
-        opt = SGD(parameters, lr = p.opt.lr,
-                   weight_decay=p.opt.wd,
-                   momentum=p.opt.momentum, inhib_momentum=p.opt.inhib_momentum) #,exponentiated_grad=p.opt.exponentiated)  
-        opt.nesterov = p.opt.nesterov
-        # opt.eg_normalise = p.opt.eg_normalise
-        return opt
-
-    elif p.opt.algorithm.lower() == "adamw":
-        #  this should be adapted in future for adamw specific args! 
-        return AdamW(parameters, lr = p.opt.lr,
-                     weight_decay=p.opt.wd,
-                     exponentiated_grad=p.opt.exponentiated) 
-
-
-
-def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
+def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
     # the vars below should all be defined in the global scope
     epoch_correct, total_ims = 0, 0
-    annealing_temp = 0
-    time_step_max =  len(loaders['train']) * 50
     idx_batch_count = len(loaders['train']) * epoch
     for idx_batch, (ims, labs) in enumerate(loaders['train']):
 
 
         model.train()
         opt.zero_grad(set_to_none=True)
-
-        # TEMP: Switch Off Homeostasis
-        Wex_grad = dict()
-        model.set_homeostasis(0)
-        model.set_ln(1)
-        model.set_wandb(0)
-        with autocast("cuda"):
-            ims, labs = ims.squeeze(1).cuda(), labs.cuda()
-            out = model(ims)
-            Wex_grad["output"] = out.view(-1)
-            loss = loss_fn(out, labs)
-        
-        for name, param in model.named_parameters():
-            if 'Wex' in name:
-                if param.requires_grad:
-                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                    Wex_grad[name] = param.grad.view(-1)
-        
-        model.set_homeostasis(p.model.homeostasis)
-        model.set_ln(None if p.model.normtype==0 else 1)
-        model.set_wandb(p.exp.use_wandb)
-        opt.zero_grad(set_to_none=True)
-        # This is the end of this....
           
         with autocast("cuda"):
+            ims, labs = ims.squeeze(1).cuda(), labs.cuda()
             out = model(ims)
             loss = loss_fn(out, labs)
 
@@ -222,45 +150,17 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
             batch_acc = batch_correct / ims.shape[0] * 100
             epoch_correct += batch_correct
             total_ims += ims.shape[0]
-        
-        if p.model.homeostatic_annealing:
-            annealing_temp = utils.cosine_annealing(idx_batch_count, time_step_max)
-            model.set_homeostatic_temp(1-annealing_temp)
-            loss = annealing_temp * loss
 
         grad_norms = {}
         weight_norms = {}
-
-        if p.model.homeostasis:
-            for name, param in model.named_parameters():
-                if param.requires_grad:
-                    if ('Wix' in name or 'Wei' in name or 'gamma' in name or 'beta' in name ) and 'fc_output' not in name:
-                        if p.model.task_opt_inhib:
-                            param.grad = param.grad + torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                        continue
-
-                    if p.model.excitation_training: # and epoch > 25:
-                        param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                        grad_norm = param.grad.norm(2).item()  # L2 norm
-                        grad_norms[f"grad_norm/{name}"] = grad_norm
-                        weight_norm = param.norm(2).item()  # L2 norm of the weights
-                        weight_norms[f"weight_norm/{name}"] = weight_norm
-                        if 'Wex' in name: grad_norms[f"grad_norm/{name}_alignment"] = F.cosine_similarity(param.grad.view(-1), Wex_grad[name], dim=0).item()
-                        if 'Wex' in name: grad_norms[f"grad_norm/output_alignment"] = F.cosine_similarity(out.view(-1), Wex_grad["output"], dim=0).item()
-                        if 'Wex' in name: grad_norms[f"grad_norm/output_alignment_mse"] = F.mse_loss(out.view(-1), Wex_grad["output"]).item()
-                    else:
-                        param.grad = torch.autograd.grad(scaler.scale(loss*0), param, retain_graph=True)[0]
-        else:
-            for name, param in model.named_parameters():
-                if param.requires_grad:
-                    param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
-                    grad_norm = param.grad.norm(2).item()  # L2 norm
-                    grad_norms[f"grad_norm/{name}"] = grad_norm
-                    weight_norm = param.norm(2).item()  # L2 norm of the weights
-                    weight_norms[f"weight_norm/{name}"] = weight_norm
-                    if 'Wex' in name: grad_norms[f"grad_norm/{name}_alignment"] = F.cosine_similarity(param.grad.view(-1), Wex_grad[name], dim=0).item()
-                    if 'Wex' in name: grad_norms[f"grad_norm/output_alignment"] = F.cosine_similarity(out.view(-1), Wex_grad["output"], dim=0).item()
-                    if 'Wex' in name: grad_norms[f"grad_norm/output_alignment_mse"] = F.mse_loss(out.view(-1), Wex_grad["output"]).item()
+        
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                param.grad = torch.autograd.grad(scaler.scale(loss), param, retain_graph=True)[0]
+                grad_norm = param.grad.norm(2).item()  # L2 norm
+                grad_norms[f"grad_norm/{name}"] = grad_norm
+                weight_norm = param.norm(2).item()  # L2 norm of the weights
+                weight_norms[f"weight_norm/{name}"] = weight_norm
             
             #scaler.scale(loss).backward()
         
@@ -276,105 +176,55 @@ def train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch):
     epoch_acc = epoch_correct / total_ims * 100
     results["online_epoch_acc"] = epoch_acc
 
-def eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p):
+def eval_model(epoch, model, loaders, loss_fn_sum, p):
     model.eval()
     with torch.no_grad():
-        train_correct, n_train, train_loss, train_local_loss = 0., 0., 0., 0.
+        train_correct, n_train, train_loss = 0., 0., 0.
         for ims, labs in loaders['train']:
             with autocast("cuda"):
-                num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 train_loss += loss_val
-                local_loss = model.get_local_val()
-                #print(f"Global Loss: {loss_val.item()}")
                 train_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_train += ims.shape[0]
-                train_local_loss += local_loss
         train_acc = train_correct / n_train * 100
         train_loss /=  n_train
-        train_local_loss /= n_train
         
         model.register_eval=True
-        test_correct, n_test, test_loss, test_local_loss = 0., 0., 0., 0.
+        test_correct, n_test, test_loss = 0., 0., 0.
         for ims, labs in loaders['test']:
             with autocast("cuda"):
-                # out = (model(ims) + model(ch.fliplr(ims))) / 2. # Test-time augmentation
-                num_of_local_layers = 0
                 ims, labs = ims.squeeze(1).cuda(), labs.cuda()
                 out = model(ims)
                 loss_val = loss_fn_sum(out, labs)
                 test_loss += loss_val
-                local_loss = model.get_local_val()
                 #print(f"Global Loss: {loss_val.item()}")
                 test_correct += out.argmax(1).eq(labs).sum().cpu().item()
                 n_test += ims.shape[0]
-                test_local_loss += local_loss
 
         model.register_eval=False
         #print("Not currently running train eval!")
         test_acc = test_correct / n_test * 100
         test_loss /=  n_test
-        test_local_loss /= n_test
 
         results["test_accs"].append(test_acc)
         results["test_losses"].append(test_loss.cpu().item())
         results["train_accs"].append(train_acc)
         results["train_losses"].append(train_loss.cpu().item())
-        results["train_local_losses"].append(train_local_loss)
-        results["test_local_losses"].append(test_local_loss)
-        results["train_total_loss"].append(train_loss.cpu().item() + train_local_loss)
-        results["test_total_loss"].append(test_loss.cpu().item() + test_local_loss)
         results["ep_i"].append(epoch)
 
         if p.exp.use_wandb: 
             wandb.log({"epoch_i":epoch,
                 "test_loss":results["test_losses"][-1], "test_acc":results["test_accs"][-1],
-                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],
-                "train_local_loss":results["train_local_losses"][-1], "test_local_loss":results["test_local_losses"][-1],
-                "train_total_loss":results["train_total_loss"][-1], "test_total_loss":results["test_total_loss"][-1],})
+                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],})
 
-
-def train_model(p):
-    log_epochs = 1 # how often to eval and log model performance
-    #print("Training model for {} epochs with {} optimizer, lr={}, wd={:.1e}".format(EPOCHS,opt.__class__.__name__,lr,weight_decay))
-    progress_bar = tqdm(range(1,1+p.train.epochs))
-    
-    for ep_i in progress_bar:
-        train_epoch(ep_i)
-        if ep_i%log_epochs==0:
-            eval_model(ep_i)
-            # here also get model info like % dead units, "effective rank", and weight norm           
-            progress_bar.set_description(
-            "Epoch {} | Train/Test Accuracy: {:.2f}/{:.2f} | Local Loss: {}/{}".format(
-                ep_i,
-                results["train_accs"][-1],
-                results["test_accs"][-1],
-                results["train_local_losses"][-1],
-                results["test_local_losses"][-1]
-            )
-            )
-        #print(scheduler.get_last_lr())
-    return results 
-
-def build_model(p, scaler):
-    model = deepdensenets.net(p, scaler)
-    #model = predictivernn.net(p)
-    return model
-
-def convert_to_dict(obj):
-    if isinstance(obj, NestedNamespace):
-        obj_dict = obj.__dict__
-        for key, value in obj_dict.items():
-            if isinstance(value, NestedNamespace):
-                obj_dict[key] = convert_to_dict(value)
-        return obj_dict
-    elif isinstance(obj, list):
-        return [convert_to_dict(item) if isinstance(item, NestedNamespace) else item for item in obj]
+def build_model(p):
+    if p.model.excitation_training:
+        model = edensenet.net(p)
     else:
-        return obj
-
+        model = eidensenet.net(p)
+    return model
 
 class DummyGradScaler:
     def scale(self, loss):
@@ -394,8 +244,7 @@ if __name__ == "__main__":
     device = train_utils.get_device()
     results = {"test_accs" :[], "test_losses": [], 
                 "train_accs" :[], "train_losses":[], "ep_i":[],
-                "model_norm":[], "train_local_losses":[], "test_local_losses":[],
-                "train_total_loss":[], "test_total_loss":[]}
+                "model_norm":[],}
 
     p = train_utils.get_config()
     train_utils.set_seed_all(p.train.seed)
@@ -415,12 +264,12 @@ if __name__ == "__main__":
 
     loaders = get_dataloaders(p)
     scaler = DummyGradScaler() #GradScaler()
-    model = build_model(p, scaler)
+    model = build_model(p)
     model.register_hooks() # Register the forward hooks
     model = model.cuda()
     params_groups = optimizer_utils.get_param_groups(model, return_groups_dict=True)
     EPOCHS = p.train.epochs
-    opt = get_optimizer(p, model)
+    opt = optimizer_utils.get_optimizer(p, model)
     iters_per_epoch = len(loaders['train'])
     
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
@@ -432,16 +281,14 @@ if __name__ == "__main__":
     progress_bar = tqdm(range(1,1+(EPOCHS)))
     
     for epoch in progress_bar:
-        train_epoch(model, loaders, loss_fn, local_loss_fn, opt, p, scaler, epoch)
+        train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch)
         if epoch%1==0:
-            eval_model(epoch, model, loaders, loss_fn_sum, local_loss_fn, p)          
+            eval_model(epoch, model, loaders, loss_fn_sum, p)          
             progress_bar.set_description(
-            "Epoch {} | Train/Test Accuracy: {:.2f}/{:.2f} | Local Loss: {:.2e}/{:.2e}".format(
+            "Epoch {} | Train/Test Accuracy: {:.2f}/{:.2f}".format(
                 epoch,
                 results["train_accs"][-1],
-                results["test_accs"][-1],
-                results["train_local_losses"][-1],
-                results["test_local_losses"][-1]
+                results["test_accs"][-1]
             )
             )
 
@@ -450,16 +297,6 @@ if __name__ == "__main__":
         run.finish()
 
     model.remove_hooks()
-
-    if p.exp.save_model:
-        save_dir = f'/network/scratch/r/roy.eyono/{p.exp.name}_{p.train.dataset}_{p.data.brightness_factor}'
-        os.makedirs(save_dir, exist_ok=True)
-        best_axc=max(results["test_accs"])
-        model_name = str(uuid.uuid4()) + f'_{best_axc}.pth'
-        if p.exp.use_wandb:
-            model_name = f'{run.name}.pth'
-        model_path = os.path.join(save_dir, model_name)
-        torch.save(model.state_dict(), model_path)
 
     # Print best test and training accuracy
     print("Best train accuracy: {:.2f}".format(max(results["train_accs"])))

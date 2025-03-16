@@ -6,7 +6,7 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayerHomeostatic
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
-from danns_eg.normalization import LayerNormalize
+from danns_eg.normalization import LayerNormalize, MeanNormalize
 import wandb
 
 
@@ -56,10 +56,14 @@ class DeepDenseDANN(nn.Module):
             setattr(self, f'fc_output', nn.Linear(hidden_size, output_size, bias=True))
 
         self.evaluation_mode = False
-        if detachnorm:
-            self.ln = LayerNormalize(hidden_size) if nonlinearity else None
-        else:
-            self.ln = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
+
+        # if detachnorm:
+        #     self.ln = LayerNormalize(hidden_size) if nonlinearity else None
+        # else:
+        #     self.ln = nn.LayerNorm(hidden_size, elementwise_affine=False) if nonlinearity else None
+
+        self.ln = MeanNormalize(detachnorm) if nonlinearity else None
+        
         self.configs = configs
         self.register_eval = False
     
@@ -104,7 +108,8 @@ class DeepDenseDANN(nn.Module):
     
     def set_ln(self, activate):
         self.nonlinearity = activate
-        self.ln = nn.LayerNorm(self.hidden_size, elementwise_affine=False) if activate else None
+        self.ln = MeanNormalize(self.detachnorm) if self.nonlinearity else None
+        # self.ln = nn.LayerNorm(self.hidden_size, elementwise_affine=False) if activate else None
     
     def set_wandb(self, activate):
         self.wandb_log = activate
