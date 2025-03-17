@@ -82,6 +82,27 @@ class Test_EIDenseNet(unittest.TestCase):
             # Test that hooks are registered correctly
             self.assertIsNotNone(hook_attr, f"Hook for layer {i} is not registered correctly")
 
+    def test_detach(self):
+        # Initialize the model for testing
+        # Example configuration dictionary p
+        p = {
+            'model': {
+                'hidden_layer_width': 20,
+                'normtype': 1,  # Assume 1 means ReLU, or any other norm type
+                'normtype_detach': 1
+            },
+            'exp': {
+                'use_wandb': False
+            }
+        }
+
+        p = dict_to_object(p)
+
+        # Initialize the model for testing with nonlinearity
+        model = einet.net(p)
+        print(model.ln.no_backward)
+        self.assertEqual(model.ln.no_backward, 1)
+
     # TODO: Figure this out
     # def test_hooks_removal(self):
     #     # Initialize the model for testing

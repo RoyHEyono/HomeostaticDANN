@@ -20,7 +20,7 @@ homeostasis=$HOMEOSTASIS
 normtype=$NORMTYPE
 normtype_detach=$NORMTYPE_DETACH
 shunting=$SHUNTING
-excitatory_only=EXCITATORY_ONLY
+excitatory_only=$EXCITATORY_ONLY
 
 # Load random parameters from file
 random_configs_file='random_configs.json'
@@ -32,7 +32,7 @@ lr_wix=$(echo $random_params | python -c "import sys, json; config=json.load(sys
 hidden_layer_width=$(echo $random_params | python -c "import sys, json; config=json.load(sys.stdin); print(config['hidden_layer_width'])")
 
 # Run your training script with the specific parameters
-python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train.py \
+python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train_EI_network.py \
   --data.brightness_factor=$brightness_factor \
   --train.dataset='fashionmnist' \
   --train.epochs=50 \
