@@ -103,31 +103,5 @@ class Test_EIDenseNet(unittest.TestCase):
         print(model.ln.no_backward)
         self.assertEqual(model.ln.no_backward, 1)
 
-    # TODO: Figure this out
-    # def test_hooks_removal(self):
-    #     # Initialize the model for testing
-    #      # Example configuration dictionary p
-    #     p = {
-    #         'model': {
-    #             'hidden_layer_width': 20,
-    #             'normtype': 1,  # Assume 1 means ReLU, or any other norm type
-    #             'normtype_detach': 0
-    #         },
-    #         'exp': {
-    #             'use_wandb': False
-    #         }
-    #     }
-
-    #     p = dict_to_object(p)
-
-    #     # Initialize the model for testing with nonlinearity
-    #     model = enet.net(p)
-    #     model.register_hooks()
-    #     model.remove_hooks()
-    #     for i in range(model.num_layers):
-    #         hook_attr = getattr(model, f'fc{i}_hook', None)
-    #         # Test that hooks are removed correctly
-    #         self.assertIsNone(hook_attr, f"Hook for layer {i} was not removed correctly")
-
 if __name__ == "__main__":
     unittest.main()
