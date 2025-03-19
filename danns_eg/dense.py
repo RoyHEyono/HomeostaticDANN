@@ -481,10 +481,11 @@ class EiDenseLayerMeanHomeostatic(BaseModule):
 
         # Compute local homeostatic loss between excitatory and inhibitory signals
         # hex is detached to prevent gradients from affecting Wex
-        local_loss, self.local_loss_value  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
-        
-        # Scale and backpropagate the local loss, updating only the inhibitory weights
-        self.scaler.scale(local_loss).backward()
+        if torch.is_grad_enabled():
+            local_loss, self.local_loss_value  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
+            
+            # Scale and backpropagate the local loss, updating only the inhibitory weights
+            self.scaler.scale(local_loss).backward()
         
         # Set excitation output as hex (raw excitatory response)
         self.excitation_output = self.hex
