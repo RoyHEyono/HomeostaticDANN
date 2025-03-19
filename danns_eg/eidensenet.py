@@ -57,11 +57,11 @@ class EIDenseNet(nn.Module):
         return forward_hook
 
     def register_hooks(self):
-        for i in range(self.num_layers):
+        for i in range(self.num_layers + 1):
             setattr(self, f'fc{i}_hook', getattr(self, f'fc{i}').register_forward_hook(self.list_forward_hook(layername=f'fc{i}')))
 
     def remove_hooks(self):
-        for i in range(self.num_layers):
+        for i in range(self.num_layers + 1):
             getattr(self, f'fc{i}_hook').remove()
 
     def get_local_val(self):
