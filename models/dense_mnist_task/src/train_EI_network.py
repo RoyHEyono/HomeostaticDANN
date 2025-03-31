@@ -276,7 +276,6 @@ if __name__ == "__main__":
     loss_fn = CrossEntropyLoss(label_smoothing=0.1)
     loss_fn_sum = CrossEntropyLoss(label_smoothing=0.1, reduction='sum')
     loss_fn_no_reduction = CrossEntropyLoss(label_smoothing=0.1, reduction='none')
-    local_loss_fn = densenn.LocalLossMean(p.model.hidden_layer_width, nonlinearity_loss=p.model.implicit_homeostatic_loss)
 
     log_epochs = 10
     progress_bar = tqdm(range(1,1+(EPOCHS)))

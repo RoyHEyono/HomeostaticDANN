@@ -34,6 +34,16 @@ class TestDivisiveNormalizeFunction(unittest.TestCase):
         self.feature_dim = 4
         self.x = torch.randn(self.batch_size, self.feature_dim, requires_grad=True) - 1 # Subtract 1 to get it off center
 
+    def test_divisive_norm_class(self):
+        dim_x = 20
+        x = torch.randn(32, dim_x)
+        layernorm_control = nn.LayerNorm(dim_x, elementwise_affine=False)
+        ln_local = self.DivisiveNorm(20)
+        x_centered = x - x.mean(dim=1, keepdim=True)
+
+        self.assertTrue(torch.allclose(layernorm_control(x_centered), ln_local(x_centered), atol=1e-8),
+                        msg=f"Mismatch between divisive normalization and LayerNorm.")
+
     def test_forward_variance(self):
         """Check that DivisiveNormalizeFunction produces unit variance."""
         x_norm = DivisiveNormalizeFunction.apply(self.x, False)
