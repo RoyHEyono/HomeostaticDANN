@@ -47,6 +47,7 @@ class Test_EIDenseNet(unittest.TestCase):
             'model': {
                 'hidden_layer_width': 20,
                 'normtype': 1,  # Assume 1 means ReLU, or any other norm type
+                'divisive_norm': 0,
                 'normtype_detach': 0
             },
             'exp': {
@@ -64,6 +65,35 @@ class Test_EIDenseNet(unittest.TestCase):
         # Test that MeanNormalize works if nonlinearity is enabled
         self.assertEqual(normalized_output.shape, (32, 20), "Mean normalization output shape is incorrect")
         self.assertAlmostEqual(normalized_output.mean().item(), 0, delta=1e-5)
+
+    def test_divisive_normalization_layer(self):
+
+        
+        # Example configuration dictionary p
+        p = {
+            'model': {
+                'hidden_layer_width': 20,
+                'normtype': 0,  # Assume 1 means ReLU, or any other norm type
+                'divisive_norm': 1,
+                'normtype_detach': 0
+            },
+            'exp': {
+                'use_wandb': False
+            }
+        }
+
+        p = dict_to_object(p)
+
+        # Initialize the model for testing with nonlinearity
+        model = einet.net(p)
+        dim_x = 20
+        x = torch.randn(32, dim_x)
+        layernorm_control = nn.LayerNorm(dim_x, elementwise_affine=False)
+        x_centered = x - x.mean(dim=1, keepdim=True)
+        normalized_output = model.ln(x_centered)
+        # Test that MeanNormalize works if nonlinearity is enabled
+        self.assertEqual(normalized_output.shape, (32, 20), "Mean normalization output shape is incorrect")
+        self.assertAlmostEqual(normalized_output.var().item(), layernorm_control(x_centered).var().item(), delta=1e-8)
 
     def test_no_nonlinearity(self):
         # Initialize the model for testing without nonlinearity
@@ -89,6 +119,7 @@ class Test_EIDenseNet(unittest.TestCase):
             'model': {
                 'hidden_layer_width': 20,
                 'normtype': 1,  # Assume 1 means ReLU, or any other norm type
+                'divisive_norm': 1,
                 'normtype_detach': 1
             },
             'exp': {

@@ -45,6 +45,37 @@ class CustomGroupNorm(nn.Module):
         
         return x
 
+# Karparthy Implementation of LayerNorm: https://github.com/karpathy/llm.c/blob/master/doc/layernorm/layernorm.py
+class LayerNormKarpathy:
+
+    @staticmethod
+    def forward(x, w, b):
+        eps = 1e-5
+        B, T, C = x.size()
+        mean = x.sum(-1, keepdim=True) / C # B,T,1
+        xshift = x - mean # B,T,C
+        var = (xshift**2).sum(-1, keepdim=True) / C # B,T,1
+        rstd = (var + eps) ** -0.5 # B,T,1
+        norm = xshift * rstd # B,T,C
+        out = norm * w + b # B,T,C
+
+        cache = (x, w, mean, rstd)
+        return out, cache
+
+    @staticmethod
+    def backward(dout, cache):
+        x, w, mean, rstd = cache
+        # recompute the norm (save memory at the cost of compute)
+        norm = (x - mean) * rstd
+        # gradients for weights, bias
+        db = dout.sum((0, 1))
+        dw = (dout * norm).sum((0, 1))
+        # gradients for input
+        dnorm = dout * w
+        dx = dnorm - dnorm.mean(-1, keepdim=True) - norm * (dnorm * norm).mean(-1, keepdim=True)
+        dx *= rstd
+        return dx, dw, db
+
 class LayerNormalize(nn.Module):
     def __init__(self, feature_size, eps=1e-5):
         super(LayerNormalize, self).__init__()
@@ -97,6 +128,127 @@ class MeanNormalize(nn.Module):
     def forward(self, x):
         return MeanNormalizeFunction.apply(x, self.no_backward, self.no_forward)
 
+
+class DivisiveNormalizeFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, no_backward, no_forward=False):
+
+        if no_forward:
+            ctx.no_backward = no_backward
+            return x
+
+        epsilon = 1e-5
+        # Compute mean and variance along last dimension
+        mu = x.mean(dim=-1, keepdim=True)
+        # var = ((x - mu) ** 2).mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        sigma = torch.sqrt(var + epsilon)               # standard deviation
+        y = x / sigma                                   # normalized output
+        # Save tensors needed for backward
+        ctx.save_for_backward(x, mu, sigma)
+        ctx.no_backward = no_backward
+        return y
+
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        if ctx.no_backward:
+            return grad_output, None, None
+
+        x, mu, sigma = ctx.saved_tensors
+        D = x.shape[-1]                                 # size of last dimension
+        # Compute dot = sum_k (grad_out[k] * x[k]) along last dimension
+        dot = (grad_output * x).sum(dim=-1, keepdim=True)
+        # Apply the derived gradient formula
+        grad_input = grad_output / sigma - (x - mu) * (dot / D) / (sigma ** 3)
+        return grad_input, None, None
+
+
+# class DivisiveNormalizeFunction(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, x, no_backward, no_forward=False):
+#         ctx.x = x  # Save input for backward
+
+#         if no_forward:
+#             ctx.no_backward = no_backward
+#             return x
+
+#         var = x.var(dim=-1, keepdim=True, unbiased=False)
+#         x_norm = x / torch.sqrt(var + 1e-5)
+
+#         # Store variables needed for backward
+#         ctx.save_for_backward(x, var)
+#         ctx.no_backward = no_backward
+#         return x_norm
+
+#     # @staticmethod
+#     # def backward(ctx, grad_output):
+#     #     if ctx.no_backward:
+#     #         return grad_output, None, None
+
+#     #     x, var = ctx.saved_tensors
+#     #     D = x.shape[-1]
+
+#     #     std_inv = 1 / torch.sqrt(var + 1e-5)
+#     #     mean_x = x.mean(dim=-1, keepdim=True)
+#     #     x_normalized = (x - mean_x) * std_inv
+
+#     #     # Normalize gradients TODO: Convert this to accomodate the divisive norm. This is the true LN gradient
+#     #     g_decorrelated = grad_output - grad_output.mean(-1, keepdim=True) - (grad_output * x_normalized).mean(dim=-1, keepdim=True) * x_normalized
+#     #     g_scaled = g_decorrelated / torch.sqrt(var + 1e-5)
+
+#     #     return g_scaled, None, None
+
+#     # @staticmethod
+#     # def backward(ctx, grad_output):
+#     #     if ctx.no_backward:
+#     #         return grad_output, None, None
+
+#     #     x, var = ctx.saved_tensors
+#     #     D = x.shape[-1]
+
+#     #     std_inv = 1 / torch.sqrt(var + 1e-5)  # Compute 1/sigma
+#     #     x_normalized = x * std_inv  # Since mean is assumed zero for divisive norm
+#     #     mean_x = x.mean(dim=-1, keepdim=True)
+#     #     x_true_normalized = (x - mean_x) * std_inv
+
+#     #     # Compute decorrelated gradient
+#     #     g_decorrelated = (grad_output * std_inv) - (grad_output * x_true_normalized).mean(dim=-1, keepdim=True) * x_normalized * std_inv
+
+#     #     return g_decorrelated, None, None
+
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         if ctx.no_backward:
+#             return grad_output, None, None
+
+#         x, var = ctx.saved_tensors
+#         D = x.shape[-1]
+
+#         # std_inv = 1 / torch.sqrt(var + 1e-5)  # Compute 1/sigma
+#         std_inv = 1 / (x**2)
+#         x_normalized = x / (x**2)  # Since mean is assumed zero for divisive norm
+
+#         # Compute the derivative of std w.r.t. x
+#         d_std_dx = x / (D * torch.sqrt(var + 1e-5))  # This replaces the 2*x term
+
+#         # Compute decorrelated gradient
+#         g_decorrelated = (grad_output * std_inv) - grad_output * x_normalized * std_inv * d_std_dx
+
+#         return g_decorrelated, None, None
+
+    
+
+
+
+class DivisiveNormalize(nn.Module):
+    def __init__(self, no_backward=False, no_forward=False):
+        super(DivisiveNormalize, self).__init__()
+        self.no_backward = no_backward
+        self.no_forward = no_forward
+
+    def forward(self, x):
+        return DivisiveNormalizeFunction.apply(x, self.no_backward, self.no_forward)
 
 # main function
 if __name__ == "__main__":

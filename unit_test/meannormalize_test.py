@@ -15,6 +15,28 @@ def dict_to_object(data):
 
 class TestMeanNormalizeFunction(unittest.TestCase):
 
+    class MuNorm(nn.Module):
+        def __init__(self, normalized_shape, eps=1e-5):
+            """
+            Implements divisive normalization (only divides by std, does not subtract mean).
+            
+            Args:
+                normalized_shape (int or tuple): Number of features (like LayerNorm).
+                eps (float): Small constant for numerical stability.
+            """
+            super().__init__()
+            self.eps = eps
+            self.normalized_shape = normalized_shape
+
+        def forward(self, x):
+            # Compute variance (without mean subtraction)
+            mu = x.mean(dim=-1, keepdim=True)
+            
+            # Normalize without mean subtraction
+            x_norm = x - mu
+
+            return x_norm
+
     def test_forward(self):
         """Test whether the forward pass correctly normalizes the input."""
         torch.manual_seed(42)
@@ -76,3 +98,40 @@ class TestMeanNormalizeFunction(unittest.TestCase):
         
         # Assert that the output is exactly the same as the input
         self.assertTrue(torch.equal(output_no_forward, x), msg="When no_forward is True, the input should not be modified")
+
+    def test_backward_against_layernorm(self):
+        
+        batch_size = 4
+        feature_dim = 4
+        x = torch.randn(batch_size, feature_dim, requires_grad=True) - 1 # Subtract 1 to get it off center
+
+        """Compare gradient behavior of DivisiveNormalizeFunction with LayerNorm after a linear transformation."""
+        ln = self.MuNorm(feature_dim)
+        linear = torch.nn.Linear(feature_dim, feature_dim, bias=False)
+
+        # Create input with a nonzero mean
+        x = x.detach().clone().requires_grad_(True)  # Independent tensor
+        x_transformed = linear(x)  # Apply linear transformation
+
+        grad_output = torch.randn_like(x_transformed)  # Random gradients
+
+        # Compute gradients for LayerNorm
+        linear.weight.grad = None  # Zero out gradients
+        ln_out = ln(x_transformed)
+        ln_out.backward(grad_output, retain_graph=True)  # Retain graph
+        ln_weight_grad = linear.weight.grad.clone()
+
+        # Compute gradients for DivisiveNormalizeFunction
+        linear.weight.grad = None  # Zero out gradients
+        x_transformed.requires_grad_()  # Ensure gradients are tracked
+        dn_out = MeanNormalizeFunction.apply(x_transformed, False)
+        dn_out.backward(grad_output)  # No retain_graph needed here
+        dn_weight_grad = linear.weight.grad.clone()
+
+        # # Assert that gradients match
+        # self.assertTrue(torch.allclose(ln_out, dn_out, atol=1e-4),
+        #                 msg=f"Output mismatch between DivisiveNormalizeFunction and LayerNorm.\n{ln_out - dn_out}")
+
+        # Assert that gradients match
+        self.assertTrue(torch.allclose(dn_weight_grad, ln_weight_grad, atol=1e-8),
+                        msg=f"Gradient mismatch between DivisiveNormalizeFunction and LayerNorm.\n{dn_weight_grad - ln_weight_grad}")

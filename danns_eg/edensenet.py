@@ -6,9 +6,13 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayer, EDenseLayer
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
-from danns_eg.normalization import LayerNormalize, MeanNormalize
+from danns_eg.normalization import LayerNormalize, MeanNormalize, DivisiveNormalize
 import wandb
 
+NO_NORMALIZE = 0
+MEAN_NORMALIZE = 1
+VAR_NORMALIZE = 2
+LN_NORMALIZE = 3
 
 class EDenseNet(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, wandb=0, num_layers=2, nonlinearity=0, detachnorm=0):
@@ -34,8 +38,16 @@ class EDenseNet(nn.Module):
         setattr(self, f'fc_output', EiDenseLayer(hidden_size, output_size, ni=max(1,int(output_size*0.1)), nonlinearity=None, use_bias=True, split_bias=False))
 
         self.evaluation_mode = False
-
-        self.ln = MeanNormalize(detachnorm) if nonlinearity else None
+        
+        if nonlinearity == NO_NORMALIZE:
+            self.ln = None
+        elif nonlinearity == MEAN_NORMALIZE:
+            self.ln = MeanNormalize(detachnorm)
+        elif nonlinearity == VAR_NORMALIZE:
+            self.ln = DivisiveNormalize(detachnorm)
+        else:
+            self.ln = None
+        
         self.register_eval = False
     
     def list_forward_hook(self, layername):
@@ -84,8 +96,16 @@ def net(p:dict):
     input_dim = 784
     num_class = 10
     width=p.model.hidden_layer_width
+    mean_normalize =  p.model.normtype
+    divisive_normalize = p.model.divisive_norm
+    if mean_normalize:
+        norm_value = MEAN_NORMALIZE
+    elif divisive_normalize:
+        norm_value = VAR_NORMALIZE
+    else:
+        norm_value = NO_NORMALIZE
 
-    model = EDenseNet(input_dim, width, num_class, wandb=p.exp.use_wandb, num_layers=1, nonlinearity=p.model.normtype, detachnorm=p.model.normtype_detach)
+    model = EDenseNet(input_dim, width, num_class, wandb=p.exp.use_wandb, num_layers=1, nonlinearity=norm_value, detachnorm=p.model.normtype_detach)
 
     return model
 
