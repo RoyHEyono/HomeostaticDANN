@@ -77,7 +77,7 @@ Section('data', 'dataset related parameters').params(
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
     normtype=Param(int,'train model with layernorm', default=0),
-    divisive_norm=Param(int,'train model with divisive LayerNorm', default=0),
+    divisive_norm=Param(int,'train model with divisive LayerNorm', default=1),
     normtype_detach=Param(int,'train model with detached layernorm', default=1),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
@@ -89,7 +89,7 @@ Section('model', 'Model Parameters').params(
     homeo_opt_exc=Param(int,'train excitatatory weights on inhibitory loss', default=0),
     homeostatic_annealing=Param(int,'applying annealing to homeostatic loss', default=0),
     hidden_layer_width=Param(int,'number of hidden layers', default=500),
-    #input_shape=Param(tuple,'optional, none batch' 
+    #input_shape=Param(tuple,'optional, none batch'
 )
 Section('opt', 'optimiser parameters').params(
     algorithm=Param(str, 'learning algorithm', default='sgd'),

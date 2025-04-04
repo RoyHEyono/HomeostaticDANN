@@ -131,6 +131,56 @@ class MeanNormalize(nn.Module):
 
 class DivisiveNormalizeFunction(torch.autograd.Function):
     @staticmethod
+    def forward(ctx, input: torch.Tensor, no_backward, no_forward=False):
+
+        if no_forward:
+            ctx.no_backward = no_backward
+            return input
+        
+        # Compute variance along the last dimension (no mean subtraction, unbiased=False for population variance)
+        var = input.var(dim=-1, keepdim=True, unbiased=False)
+        # Compute sigma = sqrt(var + epsilon) with epsilon for numerical stability
+        epsilon = 1e-5
+        sigma = torch.sqrt(var + epsilon)
+        # Divisive normalization (no centering)
+        output = input / sigma
+        # Save tensors for backward computations
+        ctx.save_for_backward(input, sigma)
+        ctx.eps = epsilon  # store epsilon if needed
+        ctx.no_backward = no_backward
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+
+        if ctx.no_backward:
+            return grad_output, None, None
+
+        # Retrieve saved tensors
+        input, sigma = ctx.saved_tensors
+        # Number of features along the normalized dimension
+        N = input.size(-1)
+        # Compute mean of input along last dim (for gradient formula, though mean was not used in forward output)
+        mu = input.mean(dim=-1, keepdim=True)
+        # Compute dot product of grad_output and input along last dimension (sum of elementwise products)
+        grad_out_dot_x = (grad_output * input).sum(dim=-1, keepdim=True)
+        # Gradient for the input (applying the derived formula)
+        grad_input = grad_output / sigma  -  (input - mu) * grad_out_dot_x / (sigma**3 * N)
+        return grad_input, None, None
+
+
+class DivisiveNormalize(nn.Module):
+    def __init__(self, no_backward=False, no_forward=False):
+        super(DivisiveNormalize, self).__init__()
+        self.no_backward = no_backward
+        self.no_forward = no_forward
+
+    def forward(self, x):
+        return DivisiveNormalizeFunction.apply(x, self.no_backward, self.no_forward)
+
+
+class LayerNormalizeFunction(torch.autograd.Function):
+    @staticmethod
     def forward(ctx, x, no_backward, no_forward=False):
 
         if no_forward:
@@ -143,7 +193,7 @@ class DivisiveNormalizeFunction(torch.autograd.Function):
         # var = ((x - mu) ** 2).mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True, unbiased=False)
         sigma = torch.sqrt(var + epsilon)               # standard deviation
-        y = x / sigma                                   # normalized output
+        y = (x-mu) / sigma                                   # normalized output
         # Save tensors needed for backward
         ctx.save_for_backward(x, mu, sigma)
         ctx.no_backward = no_backward
@@ -151,33 +201,24 @@ class DivisiveNormalizeFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-
         if ctx.no_backward:
             return grad_output, None, None
 
-        x, mu, sigma = ctx.saved_tensors
-        D = x.shape[-1]                                 # size of last dimension
-        # Compute dot = sum_k (grad_out[k] * x[k]) along last dimension
-        dot = (grad_output * x).sum(dim=-1, keepdim=True)
-        # Apply the derived gradient formula
-        grad_input = grad_output / sigma - (x - mu) * (dot / D) / (sigma ** 3)
+        x, mu, sigma= ctx.saved_tensors
+        y = (x-mu) / sigma
+        D = x.shape[-1]
+
+        grad_mean = grad_output.mean(dim=-1, keepdim=True)
+        dot = (grad_output * y).sum(dim=-1, keepdim=True)
+
+        grad_input = (grad_output - grad_mean - y * dot / D) / sigma
         return grad_input, None, None
 
-class DivisiveNormalize(nn.Module):
+class LayerNormalizeCustom(nn.Module):
     def __init__(self, no_backward=False, no_forward=False):
-        super(DivisiveNormalize, self).__init__()
+        super(LayerNormalizeCustom, self).__init__()
         self.no_backward = no_backward
         self.no_forward = no_forward
 
     def forward(self, x):
-        return DivisiveNormalizeFunction.apply(x, self.no_backward, self.no_forward)
-
-# main function
-if __name__ == "__main__":
-    x = torch.randn(32, 3, 28, 28) # batch_size, num_channels, height, width
-    norm1 = nn.GroupNorm(1, 3, affine=False, eps=1e-5)
-    norm2 = SubtractiveOnlyGroupNorm(1, 3, affine=False, eps=1e-5)
-    y1 = norm1(x)[3][0][0][1]
-    y2 = norm2(x)[3][0][0][1]
-    print(y1, y2)
-    print((norm1(x) - norm2(x)).abs().max())
+        return LayerNormalizeFunction.apply(x, self.no_backward, self.no_forward)

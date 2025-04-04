@@ -99,39 +99,58 @@ class TestMeanNormalizeFunction(unittest.TestCase):
         # Assert that the output is exactly the same as the input
         self.assertTrue(torch.equal(output_no_forward, x), msg="When no_forward is True, the input should not be modified")
 
+    class LayerNormNet(nn.Module):
+            """A simple network that applies a linear transformation followed by Layer Norm."""
+            def __init__(self, feature_dim, mu_norm_func, use_custom_norm=False, dtype=torch.float64):
+                super().__init__()
+                self.linear = nn.Linear(feature_dim, feature_dim, bias=False, dtype=dtype)  # ✅ Init directly in float64
+                self.norm = (
+                    MeanNormalize(no_backward=False, no_forward=False).to(dtype=dtype)
+                    if use_custom_norm else mu_norm_func  # ✅ Directly in float64
+                )
+
+            def forward(self, x):
+                return self.norm(self.linear(x))
+
     def test_backward_against_layernorm(self):
-        
-        batch_size = 4
-        feature_dim = 4
-        x = torch.randn(batch_size, feature_dim, requires_grad=True) - 1 # Subtract 1 to get it off center
+        """Compare gradients of LayerNormalizeFunction vs. PyTorch's LayerNorm using autograd checks."""
+        feature_dim, batch_size = 10, 5
+        mu_norm_func = self.MuNorm(feature_dim)
 
-        """Compare gradient behavior of DivisiveNormalizeFunction with LayerNorm after a linear transformation."""
-        ln = self.MuNorm(feature_dim)
-        linear = torch.nn.Linear(feature_dim, feature_dim, bias=False)
+        # ✅ Ensure input is structured and meaningful
+        x = torch.arange(batch_size * feature_dim, dtype=torch.float64).view(batch_size, feature_dim)
+        x.requires_grad_(True)
 
-        # Create input with a nonzero mean
-        x = x.detach().clone().requires_grad_(True)  # Independent tensor
-        x_transformed = linear(x)  # Apply linear transformation
+        # ✅ Create first model (PyTorch LayerNorm)
+        model_torch = self.LayerNormNet(feature_dim, mu_norm_func, use_custom_norm=False, dtype=torch.float64)
 
-        grad_output = torch.randn_like(x_transformed)  # Random gradients
+        # ✅ Create second model (Custom LayerNorm) with **identical weights**
+        model_custom = self.LayerNormNet(feature_dim, mu_norm_func, use_custom_norm=True, dtype=torch.float64)
+        model_custom.linear.weight.data.copy_(model_torch.linear.weight.data)  # ✅ Copy identical weights
 
-        # Compute gradients for LayerNorm
-        linear.weight.grad = None  # Zero out gradients
-        ln_out = ln(x_transformed)
-        ln_out.backward(grad_output, retain_graph=True)  # Retain graph
-        ln_weight_grad = linear.weight.grad.clone()
+        # Compute scalar loss (sum ensures gradients exist)
+        loss_torch = model_torch(x).sum()
+        loss_custom = model_custom(x).sum()
 
-        # Compute gradients for DivisiveNormalizeFunction
-        linear.weight.grad = None  # Zero out gradients
-        x_transformed.requires_grad_()  # Ensure gradients are tracked
-        dn_out = MeanNormalizeFunction.apply(x_transformed, False)
-        dn_out.backward(grad_output)  # No retain_graph needed here
-        dn_weight_grad = linear.weight.grad.clone()
+        # Compute gradients w.r.t. x
+        grad_x_torch, = torch.autograd.grad(loss_torch, x, create_graph=True)
+        grad_x_custom, = torch.autograd.grad(loss_custom, x, create_graph=True)
 
-        # # Assert that gradients match
-        # self.assertTrue(torch.allclose(ln_out, dn_out, atol=1e-4),
-        #                 msg=f"Output mismatch between DivisiveNormalizeFunction and LayerNorm.\n{ln_out - dn_out}")
+        # ✅ Compare outputs and gradients
+        self.assertTrue(torch.allclose(loss_torch, loss_custom, atol=1e-25),
+                        msg=f"Output mismatch: {loss_torch.item()} vs {loss_custom.item()}")
 
-        # Assert that gradients match
-        self.assertTrue(torch.allclose(dn_weight_grad, ln_weight_grad, atol=1e-8),
-                        msg=f"Gradient mismatch between DivisiveNormalizeFunction and LayerNorm.\n{dn_weight_grad - ln_weight_grad}")
+        self.assertTrue(torch.allclose(grad_x_torch, grad_x_custom, atol=1e-8),
+                        msg=f"Gradient mismatch.\n{grad_x_torch - grad_x_custom}")
+
+        # ✅ Check parameter gradients
+        model_torch.zero_grad()
+        model_custom.zero_grad()
+        loss_torch.backward(retain_graph=True)
+        loss_custom.backward()
+        self.assertTrue(torch.allclose(model_torch.linear.weight.grad, model_custom.linear.weight.grad, atol=1e-8),
+                        msg="Linear weight gradients mismatch.")
+
+        # ✅ Use gradcheck on the **custom model**, ensuring everything is float64
+        x_gradcheck = x.detach().clone().requires_grad_(True)
+        self.assertTrue(torch.autograd.gradcheck(model_custom, (x_gradcheck,), eps=1e-6, atol=1e-4))
