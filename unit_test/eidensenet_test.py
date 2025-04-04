@@ -48,7 +48,8 @@ class Test_EIDenseNet(unittest.TestCase):
                 'hidden_layer_width': 20,
                 'normtype': 1,  # Assume 1 means ReLU, or any other norm type
                 'divisive_norm': 0,
-                'normtype_detach': 0
+                'normtype_detach': 0,
+                'layer_norm': 0
             },
             'exp': {
                 'use_wandb': False
@@ -75,7 +76,8 @@ class Test_EIDenseNet(unittest.TestCase):
                 'hidden_layer_width': 20,
                 'normtype': 0,  # Assume 1 means ReLU, or any other norm type
                 'divisive_norm': 1,
-                'normtype_detach': 0
+                'normtype_detach': 0,
+                'layer_norm': 0
             },
             'exp': {
                 'use_wandb': False
@@ -120,7 +122,8 @@ class Test_EIDenseNet(unittest.TestCase):
                 'hidden_layer_width': 20,
                 'normtype': 1,  # Assume 1 means ReLU, or any other norm type
                 'divisive_norm': 1,
-                'normtype_detach': 1
+                'normtype_detach': 1,
+                'layer_norm': 0
             },
             'exp': {
                 'use_wandb': False

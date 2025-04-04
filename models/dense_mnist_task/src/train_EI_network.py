@@ -76,9 +76,10 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with layernorm', default=0),
-    divisive_norm=Param(int,'train model with divisive LayerNorm', default=1),
-    normtype_detach=Param(int,'train model with detached layernorm', default=1),
+    normtype=Param(int,'train model with MEAN NORM', default=1),
+    divisive_norm=Param(int,'train model with divisive LayerNorm', default=0),
+    layer_norm=Param(int,'train model with normal LayerNorm', default=0),
+    normtype_detach=Param(int,'train model with detached layernorm', default=0),
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=0),
@@ -97,7 +98,7 @@ Section('opt', 'optimiser parameters').params(
     wd=Param(float,'weight decay lambda', default=0), #0.001 # Weight decay is very bad for inhibition
     momentum=Param(float,'momentum factor', default=0), #0.5 # We need a seperate momentum for the inhib component as well
     inhib_momentum=Param(float,'inhib momentum factor', default=0),
-    lr=Param(float, 'lr and Wex if dann', default=0.01),
+    lr=Param(float, 'lr and Wex if dann', default=0.002311947574673269), #0.01),
     use_sep_inhib_lrs=Param(int,' ', default=1),
     use_sep_bias_gain_lrs=Param(int,'add gain and bias to layer', default=1),
     eg_normalise=Param(bool,'maintain sum of weights exponentiated is true ', default=False),
@@ -107,8 +108,8 @@ Section('opt', 'optimiser parameters').params(
 )
 
 Section('opt.inhib_lrs').enable_if(lambda cfg:cfg['opt.use_sep_inhib_lrs']==1).params(
-    wei=Param(float,'lr for Wei if dann', default=0.001), # 0.001
-    wix=Param(float,'lr for Wix if dann', default=0.1), # 0.1
+    wei=Param(float,'lr for Wei if dann', default=0.005944464724229217),#0.001), # 0.001
+    wix=Param(float,'lr for Wix if dann', default=0.4582898436750639),#0.1), # 0.1
 )
 
 Section('opt.bias_gain_lrs').enable_if(lambda cfg:cfg['opt.use_sep_bias_gain_lrs']==True).params(

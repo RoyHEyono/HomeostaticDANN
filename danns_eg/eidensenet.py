@@ -6,7 +6,7 @@ from danns_eg.conv import EiConvLayer, ConvLayer
 from danns_eg.dense import EiDenseLayer
 from danns_eg.sequential import Sequential
 from danns_eg.normalization import CustomGroupNorm
-from danns_eg.normalization import LayerNormalize, MeanNormalize, DivisiveNormalize
+from danns_eg.normalization import LayerNormalizeCustom, MeanNormalize, DivisiveNormalize
 import wandb
 
 NO_NORMALIZE = 0
@@ -45,6 +45,8 @@ class EIDenseNet(nn.Module):
             self.ln = MeanNormalize(detachnorm)
         elif nonlinearity == VAR_NORMALIZE:
             self.ln = DivisiveNormalize(detachnorm)
+        elif nonlinearity == LN_NORMALIZE:
+            self.ln = LayerNormalizeCustom(detachnorm)
         else:
             self.ln = None
         
@@ -98,10 +100,13 @@ def net(p:dict):
     width=p.model.hidden_layer_width
     mean_normalize =  p.model.normtype
     divisive_normalize = p.model.divisive_norm
+    layer_normalize = p.model.layer_norm
     if mean_normalize:
         norm_value = MEAN_NORMALIZE
     elif divisive_normalize:
         norm_value = VAR_NORMALIZE
+    elif layer_normalize:
+        norm_value = LN_NORMALIZE
     else:
         norm_value = NO_NORMALIZE
 
