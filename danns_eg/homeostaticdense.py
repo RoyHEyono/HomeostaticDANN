@@ -99,7 +99,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         """
         super().__init__()
 
-        assert n_input == ne, "Class doesn't support non-square matrices yet"
+        # assert n_input == ne, "Class doesn't support non-square matrices yet"
 
         self.n_input = n_input
         self.n_output = ne
@@ -210,7 +210,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         W = Wex_np - Wei_np@Wix_np
 
         _, S, V_T = np.linalg.svd(W)
-        V = V_T.T
+        V = V_T[:self.ne].T
 
         Bix_np = np.diag(S) @ V.T
         Bei_np = np.ones((self.ne,self.ne))/self.ne

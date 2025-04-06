@@ -22,7 +22,7 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
     def setUp(self):
         torch.manual_seed(42)  # Set seed for reproducibility
         self.n_input = 784
-        self.ne = 784
+        self.ne = 500
         self.ni = 2
         self.batch_size = 4
         
