@@ -91,7 +91,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
     """
     Class modeling a subtractive feed-forward inhibition layer
     """
-    def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, scaler=None, gradient_norm=False,
+    def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, lambda_homeo_var=1, scaler=None, gradient_norm=False,
                  init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
@@ -99,7 +99,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         """
         super().__init__()
 
-        # assert n_input == ne, "Class doesn't support non-square matrices yet"
+        assert n_input >= ne, "Class doesn't support matrices where n_input < ne, yet"
 
         self.n_input = n_input
         self.n_output = ne
@@ -108,7 +108,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.use_bias = use_bias
         self.ne = ne
         self.lambda_homeo = lambda_homeo
+        self.lambda_homeo_var = lambda_homeo_var
         self.loss_fn = self.LocalLossMean()
+        self.loss_var_fn = self.LocalLossVar()
+        self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
         
 
         if isinstance(ni, float): self.ni = int(ne*ni)
@@ -151,6 +154,19 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             
             mean_term = mean ** 2 
             return lambda_mean * ((mean_term).mean()), (mse_mean_ground_truth_loss).item()
+
+    class LocalLossVar(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.criterion = nn.MSELoss()
+            
+        def forward(self, output_projection, excitatory_output, ln, lambda_var=1):
+            
+            var = output_projection.var(dim=-1, unbiased=False)
+            ln_mean_ground_truth_loss = self.criterion(output_projection, ln(excitatory_output))
+            
+            var_term = (var-1) ** 2
+            return lambda_var * ((var_term).mean()), (ln_mean_ground_truth_loss).item()
 
     @property
     def W(self):
@@ -232,7 +248,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         # Compute local homeostatic loss between excitatory and inhibitory signals
         # hex is detached to prevent gradients from affecting Wex
         if torch.is_grad_enabled():
-            local_loss, self.local_loss_value  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
+            local_loss, _  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
             
             # Scale and backpropagate the local loss, updating only the inhibitory weights
             self.scaler.scale(local_loss).backward()
@@ -252,9 +268,12 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.z_d_squared = torch.matmul(self.b_hi, self.Bei.T)
         self.z_d = torch.sqrt(self.z_d_squared)
 
-        # Compute divisive inhibition gradient here...
+        # TODO: Compute divisive inhibition gradient here...
         if torch.is_grad_enabled():
-            pass
+            local_loss_var, self.local_loss_value  = self.loss_var_fn(self.z.detach()/self.z_d, self.hex.detach(), self.ln_norm, self.lambda_homeo_var)
+            
+            # Scale and backpropagate the local loss, updating only the inhibitory weights
+            self.scaler.scale(local_loss_var).backward()
 
         self.z = self.z/self.z_d.detach()
         

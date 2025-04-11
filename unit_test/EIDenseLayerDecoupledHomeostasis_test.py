@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from danns_eg.homeostaticdense import EiDenseLayerDecoupledHomeostatic
 from danns_eg.dense import EiDenseLayer, EiDenseLayerMeanHomeostatic
+import matplotlib.pyplot as plt
 
 class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
 
@@ -95,3 +96,48 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
         self.assertEqual(self.layer.Wex.shape, (self.ne, self.n_input))
         self.assertEqual(self.layer.Wix.shape, (self.ni, self.n_input))
         self.assertEqual(self.layer.Wei.shape, (self.ne, self.ni))
+
+    def test_inhibitory_weights_gradient_updated_in_forward(self):
+        """Ensure inhibitory weights receive gradients after forward pass"""
+        self.layer.zero_grad()  # Clear any previous gradients
+
+        # Run forward pass
+        _ = self.layer(self.x)
+
+        # Check if gradients exist after forward
+        self.assertIsNotNone(self.layer.Wix.grad)
+        self.assertIsNotNone(self.layer.Wei.grad)
+        self.assertIsNotNone(self.layer.Bix.grad)
+        self.assertIsNotNone(self.layer.Bei.grad)
+        self.assertIsNone(self.layer.Wex.grad)
+        self.assertIsNone(self.layer.b.grad)
+
+    def test_excitatory_weights_gradient_updated_in_backward(self):
+        """Ensure Wex only receives gradients during backward, not forward"""
+        self.layer.zero_grad()  # Clear gradients
+
+        # Run forward pass
+        output = self.layer(self.x)
+
+        # Capture Wix and Wei before forward
+        Wix_before = self.layer.Wix.grad.clone().detach()
+        Wei_before = self.layer.Wei.grad.clone().detach()
+        Bix_before = self.layer.Bix.grad.clone().detach()
+        Bei_before = self.layer.Bei.grad.clone().detach()
+
+        # Ensure Wex has NO gradients yet (should only update in backward)
+        self.assertIsNone(self.layer.Wex.grad)
+        self.assertIsNone(self.layer.b.grad)
+
+        # Compute loss and backprop
+        loss = output.sum()  # Dummy loss
+        loss.backward()
+
+        # Now Wex should have gradients
+        self.assertIsNotNone(self.layer.Wex.grad)
+        self.assertIsNotNone(self.layer.b.grad)
+        # Ensure inhibitory weights have not changed
+        self.assertTrue(torch.equal(Wix_before, self.layer.Wix.grad))
+        self.assertTrue(torch.equal(Wei_before, self.layer.Wei.grad))
+        self.assertTrue(torch.equal(Bix_before, self.layer.Bix.grad))
+        self.assertTrue(torch.equal(Bei_before, self.layer.Bei.grad))

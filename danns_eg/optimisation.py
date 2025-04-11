@@ -67,7 +67,7 @@ def get_optimizer(p, model):
     for k, group in params_groups.items():
         d = {"params":group, "name":k}
         
-        if k in ['wex_params', 'wix_params', 'wei_params']:
+        if k in ['wex_params', 'wix_params', 'wei_params', 'bei_params']:
             d["positive_only"] = True
         else: 
             d["positive_only"] = False
@@ -75,6 +75,9 @@ def get_optimizer(p, model):
         if p.opt.use_sep_inhib_lrs:
             if k == "wix_params": d['lr'] = p.opt.inhib_lrs.wix
             elif k == "wei_params": d['lr'] = p.opt.inhib_lrs.wei
+
+            if k == "bix_params": d['lr'] = p.opt.inhib_lrs.wix
+            elif k == "bei_params": d['lr'] = p.opt.inhib_lrs.wei
         
         if k == "norm_biases":
             d['exponentiated_grad'] = False 
@@ -116,7 +119,7 @@ def get_param_groups(model, return_groups_dict=False):
     param_groups = {
         "norm_biases":[],"norm_gains":[], "bias_params":[],
         "wix_params":[], "wei_params": [],'wex_params':[],
-        "rho_params":[], "other_params":[] }
+        "bix_params":[], "bei_params": [], "rho_params":[], "other_params":[] }
     
     for name, m in model.named_modules():
         if len(list(m.named_parameters(recurse=False))) == 0:
@@ -128,8 +131,10 @@ def get_param_groups(model, return_groups_dict=False):
             continue
         
         for k, param in m.named_parameters(recurse=False):
-            if k.lower().endswith("ix"): param_groups['wix_params'].append(param)
-            elif k.lower().endswith("ei"): param_groups['wei_params'].append(param)
+            if k.lower().endswith("wix"): param_groups['wix_params'].append(param)
+            elif k.lower().endswith("wei"): param_groups['wei_params'].append(param)
+            elif k.lower().endswith("bei"): param_groups['bei_params'].append(param)
+            elif k.lower().endswith("bix"): param_groups['bix_params'].append(param)
             elif k.lower().endswith("ex"): param_groups['wex_params'].append(param)
             elif "bias" in k.lower(): param_groups['bias_params'].append(param)
             elif "gamma" in k.lower(): 
@@ -202,7 +207,7 @@ class SGD(Optimizer):
             for p in group["params"]:
                 if p.grad is None: continue
 
-                if (group["name"] == "wix_params" or group["name"] == "wei_params"): mu = group["inhib_momentum"]
+                if (group["name"] == "wix_params" or group["name"] == "wei_params" or group["name"] == "bix_params" or group["name"] == "bei_params"): mu = group["inhib_momentum"]
                 else: mu = group["momentum"]
                 
                 if mu > 0:
@@ -238,7 +243,7 @@ class SGD(Optimizer):
                     raise
                 
                 # Weight decay update
-                if group["weight_decay"] > 0.0 and not (group["name"] == "wix_params" or group["name"] == "wei_params"):
+                if group["weight_decay"] > 0.0 and not (group["name"] == "wix_params" or group["name"] == "wei_params" or group["name"] == "bix_params" or group["name"] == "bei_params"):
                     wd_step_size = -group["lr"] * group["weight_decay"]
                     
                     if group["weight_decay_algorithm"] == "same":
