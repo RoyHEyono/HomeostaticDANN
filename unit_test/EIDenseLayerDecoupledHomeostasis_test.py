@@ -112,6 +112,10 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
         self.assertIsNone(self.layer.Wex.grad)
         self.assertIsNone(self.layer.b.grad)
 
+    # TODO: test if gradients being normalized correctly
+    def test_gradient_norm(self):
+        pass
+
     def test_excitatory_weights_gradient_updated_in_backward(self):
         """Ensure Wex only receives gradients during backward, not forward"""
         self.layer.zero_grad()  # Clear gradients

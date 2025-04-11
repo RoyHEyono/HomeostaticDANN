@@ -183,10 +183,18 @@ class LayerNormalizeFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, no_backward, no_forward=False):
 
+        
         if no_forward:
+            epsilon = 1e-5
+            # Compute mean and variance along last dimension
+            mu = x.mean(dim=-1, keepdim=True)
+            # var = ((x - mu) ** 2).mean(dim=-1, keepdim=True)
+            var = x.var(dim=-1, keepdim=True, unbiased=False)
+            sigma = torch.sqrt(var + epsilon)               # standard deviation
             ctx.no_backward = no_backward
+            ctx.save_for_backward(x, mu, sigma)
             return x
-
+        
         epsilon = 1e-5
         # Compute mean and variance along last dimension
         mu = x.mean(dim=-1, keepdim=True)
@@ -195,6 +203,7 @@ class LayerNormalizeFunction(torch.autograd.Function):
         sigma = torch.sqrt(var + epsilon)               # standard deviation
         y = (x-mu) / sigma                                   # normalized output
         # Save tensors needed for backward
+        
         ctx.save_for_backward(x, mu, sigma)
         ctx.no_backward = no_backward
         return y

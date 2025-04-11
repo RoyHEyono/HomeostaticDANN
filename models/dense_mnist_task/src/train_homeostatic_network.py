@@ -39,6 +39,7 @@ from danns_eg.data.dataloaders import get_dataloaders
 import danns_eg.utils as train_utils
 #import models.kakaobrain as kakaobrain
 import danns_eg.homeostaticdensenet as homeostaticdensenet
+import danns_eg.homeostatic_mu_var_densenet as fullhomeostaticdensenet
 import danns_eg.optimisation as optimizer_utils
 #from munch import DefaultMunch
 import danns_eg.utils as utils
@@ -74,7 +75,7 @@ Section('model', 'Model Parameters').params(
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
-    shunting=Param(int,'divisive inhibition', default=0),
+    shunting=Param(int,'divisive inhibition', default=1),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
     task_opt_inhib=Param(int,'train inhibition model on task loss', default=0),
@@ -147,7 +148,7 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler):
         
         for name, param in model.named_parameters():
             if param.requires_grad:
-                if ('Wix' in name or 'Wei' in name) and 'fc_output' not in name:
+                if ('ix' in name or 'ei' in name) and 'fc_output' not in name:
                     continue
 
                 if p.model.excitation_training:
@@ -225,7 +226,10 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
                 "train_total_loss":results["train_total_loss"][-1], "test_total_loss":results["test_total_loss"][-1],})
 
 def build_model(p, scaler):
-    model = homeostaticdensenet.net(p, scaler)
+    if p.model.shunting:
+        model = fullhomeostaticdensenet.net(p, scaler)
+    else:
+        model = homeostaticdensenet.net(p, scaler)
     return model
 
 class DummyGradScaler:

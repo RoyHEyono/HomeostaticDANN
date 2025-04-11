@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from danns_eg.normalization import MeanNormalizeFunction, MeanNormalize
+from danns_eg.normalization import LayerNormalizeCustom
         
 class BaseModule(nn.Module):
     """
@@ -118,7 +118,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         elif isinstance(ni, int): self.ni = ni
         
         self.scaler = scaler
-        self.apply_ln_grad = MeanNormalize(no_forward=True, no_backward=(not gradient_norm))
+        self.apply_ln_grad = LayerNormalizeCustom(no_forward=True, no_backward=(not gradient_norm))
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
@@ -163,10 +163,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         def forward(self, output_projection, excitatory_output, ln, lambda_var=1):
             
             var = output_projection.var(dim=-1, unbiased=False)
-            ln_mean_ground_truth_loss = self.criterion(output_projection, ln(excitatory_output))
+            ln_ground_truth_loss = self.criterion(output_projection, ln(excitatory_output))
             
             var_term = (var-1) ** 2
-            return lambda_var * ((var_term).mean()), (ln_mean_ground_truth_loss).item()
+            return lambda_var * ((var_term).mean()), (ln_ground_truth_loss).item()
 
     @property
     def W(self):
