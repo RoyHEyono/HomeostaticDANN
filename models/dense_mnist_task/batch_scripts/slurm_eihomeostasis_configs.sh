@@ -40,9 +40,9 @@ export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
 export NORMTYPE=$normtype
 export HOMEOSTASIS=1
-export LAMBDA_HOMEOS=0.001
+export LAMBDA_HOMEOS=0.01
 export NORMTYPE_DETACH=$detach_normtype
-export SHUNTING=0
+export SHUNTING=1
 export EXCITATORY_ONLY=$excitatory_only
 
 # Submit random jobs with the fixed set of random parameters

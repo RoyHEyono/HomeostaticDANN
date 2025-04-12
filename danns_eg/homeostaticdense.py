@@ -162,11 +162,13 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             
         def forward(self, output_projection, excitatory_output, ln, lambda_var=1):
             
+            mean = torch.mean(output_projection, dim=1, keepdim=True)
             var = output_projection.var(dim=-1, unbiased=False)
             ln_ground_truth_loss = self.criterion(output_projection, ln(excitatory_output))
             
             var_term = (var-1) ** 2
-            return lambda_var * ((var_term).mean()), (ln_ground_truth_loss).item()
+            mean_term = mean ** 2 
+            return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
 
     @property
     def W(self):
@@ -247,11 +249,11 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
         # Compute local homeostatic loss between excitatory and inhibitory signals
         # hex is detached to prevent gradients from affecting Wex
-        if torch.is_grad_enabled():
-            local_loss, _  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
+        # if torch.is_grad_enabled():
+        #     local_loss, _  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
             
-            # Scale and backpropagate the local loss, updating only the inhibitory weights
-            self.scaler.scale(local_loss).backward()
+        #     # Scale and backpropagate the local loss, updating only the inhibitory weights
+        #     self.scaler.scale(local_loss).backward()
         
         # Set excitation output as hex (raw excitatory response)
         self.excitation_output = self.hex
@@ -270,7 +272,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
         # TODO: Compute divisive inhibition gradient here...
         if torch.is_grad_enabled():
-            local_loss_var, self.local_loss_value  = self.loss_var_fn(self.z.detach()/self.z_d, self.hex.detach(), self.ln_norm, self.lambda_homeo_var)
+            local_loss_var, self.local_loss_value  = self.loss_var_fn((self.hex.detach()-self.inhibitory_output)/self.z_d, self.hex.detach(), self.ln_norm, self.lambda_homeo_var)
             
             # Scale and backpropagate the local loss, updating only the inhibitory weights
             self.scaler.scale(local_loss_var).backward()
