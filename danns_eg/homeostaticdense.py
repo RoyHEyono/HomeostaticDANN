@@ -127,6 +127,8 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.Bix = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
         self.Bei = nn.Parameter(torch.empty(self.ne,self.ne), requires_grad=True)
 
+        self.local_mean_loss_value = 0
+        self.local_var_loss_value = 0
         self.local_loss_value = 0
         
         # init and define bias as 0, split into pos, neg if using eg
@@ -168,7 +170,8 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             
             var_term = (var-1) ** 2
             mean_term = mean ** 2 
-            return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
+            # return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
+            return lambda_var * var_term.mean(), (ln_ground_truth_loss).item()
 
     @property
     def W(self):
@@ -240,6 +243,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
         # Compute excitatory input by projecting x onto Wex
         self.hex = torch.matmul(x, self.Wex.T)
+
+        # If bias is used, add it to the excitation output
+        # if self.use_bias:
+        #     self.hex = self.hex + self.b.T
         
         # Compute inhibitory input, but detach x to prevent gradients from flowing back to x
         self.hi = torch.matmul(x.detach(), self.Wix.T)
@@ -249,11 +256,11 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
         # Compute local homeostatic loss between excitatory and inhibitory signals
         # hex is detached to prevent gradients from affecting Wex
-        # if torch.is_grad_enabled():
-        #     local_loss, _  = self.loss_fn(self.hex.detach()-self.inhibitory_output, self.hex.detach(), self.lambda_homeo)
+        if torch.is_grad_enabled():
+            local_loss, _  = self.loss_fn((self.hex.detach() + self.b.T.detach())-self.inhibitory_output, (self.hex.detach() + self.b.T.detach()), self.lambda_homeo)
             
-        #     # Scale and backpropagate the local loss, updating only the inhibitory weights
-        #     self.scaler.scale(local_loss).backward()
+            # Scale and backpropagate the local loss, updating only the inhibitory weights
+            self.scaler.scale(local_loss).backward()
         
         # Set excitation output as hex (raw excitatory response)
         self.excitation_output = self.hex
@@ -268,11 +275,12 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         # Add divisive variance here...
         self.b_hi = torch.matmul(x.detach(), self.Bix.T)**2
         self.z_d_squared = torch.matmul(self.b_hi, self.Bei.T)
-        self.z_d = torch.sqrt(self.z_d_squared)
+        self.z_d = torch.sqrt(self.z_d_squared+1e-5)
 
         # TODO: Compute divisive inhibition gradient here...
         if torch.is_grad_enabled():
-            local_loss_var, self.local_loss_value  = self.loss_var_fn((self.hex.detach()-self.inhibitory_output)/self.z_d, self.hex.detach(), self.ln_norm, self.lambda_homeo_var)
+            local_loss_var, self.local_loss_value  = self.loss_var_fn(((self.hex.detach() + self.b.T.detach())-self.inhibitory_output.detach())/self.z_d, 
+                                                                    (self.hex.detach() + self.b.T.detach()), self.ln_norm, self.lambda_homeo_var)
             
             # Scale and backpropagate the local loss, updating only the inhibitory weights
             self.scaler.scale(local_loss_var).backward()

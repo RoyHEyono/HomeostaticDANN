@@ -53,7 +53,7 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
 
         # Add divisive variance here...
         z_d_squared = torch.matmul(torch.matmul(self.x, self.layer.Bix.T)**2, self.layer.Bei.T)
-        z_d = torch.sqrt(z_d_squared)
+        z_d = torch.sqrt(z_d_squared+1e-5)
 
         output = (hex - hi) / z_d
         
