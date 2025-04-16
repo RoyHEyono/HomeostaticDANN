@@ -221,9 +221,7 @@ def eval_model(epoch, model, loaders, loss_fn_sum, p):
         if p.exp.use_wandb: 
             wandb.log({"epoch_i":epoch,
                 "test_loss":results["test_losses"][-1], "test_acc":results["test_accs"][-1],
-                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],
-                "train_local_loss":results["train_local_losses"][-1], "test_local_loss":results["test_local_losses"][-1],
-                "train_total_loss":results["train_total_loss"][-1], "test_total_loss":results["test_total_loss"][-1],})
+                "train_loss":results["train_losses"][-1], "train_acc":results["train_accs"][-1],})
 
 def build_model(p, scaler):
     if p.model.shunting:

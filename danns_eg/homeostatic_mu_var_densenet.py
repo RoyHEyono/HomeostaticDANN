@@ -40,10 +40,8 @@ class HomeostaticDenseDANN(nn.Module):
             var = output.var(dim=-1, keepdim=True, unbiased=False).mean().item()
 
             if self.wandb_log: 
-                if self.register_eval:
-                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
-                else:
-                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
+                if not self.register_eval:
+                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_local_loss":layer.local_loss_value})
 
             if torch.is_grad_enabled():
                 self.local_loss_val = layer.local_loss_value

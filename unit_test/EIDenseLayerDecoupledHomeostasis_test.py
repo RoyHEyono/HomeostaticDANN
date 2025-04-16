@@ -106,9 +106,9 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
 
         # Check if gradients exist after forward
         self.assertIsNotNone(self.layer.Wix.grad)
-        self.assertIsNotNone(self.layer.Wei.grad)
+        self.assertFalse(self.layer.Wei.requires_grad)
         self.assertIsNotNone(self.layer.Bix.grad)
-        self.assertIsNotNone(self.layer.Bei.grad)
+        self.assertFalse(self.layer.Bei.requires_grad)
         self.assertIsNone(self.layer.Wex.grad)
         self.assertIsNone(self.layer.b.grad)
 
@@ -125,9 +125,9 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
 
         # Capture Wix and Wei before forward
         Wix_before = self.layer.Wix.grad.clone().detach()
-        Wei_before = self.layer.Wei.grad.clone().detach()
+        # Wei_before = self.layer.Wei.grad.clone().detach()
         Bix_before = self.layer.Bix.grad.clone().detach()
-        Bei_before = self.layer.Bei.grad.clone().detach()
+        # Bei_before = self.layer.Bei.grad.clone().detach()
 
         # Ensure Wex has NO gradients yet (should only update in backward)
         self.assertIsNone(self.layer.Wex.grad)
@@ -142,6 +142,6 @@ class TestEiDenseLayerDecoupledHomeostasis(unittest.TestCase):
         self.assertIsNotNone(self.layer.b.grad)
         # Ensure inhibitory weights have not changed
         self.assertTrue(torch.equal(Wix_before, self.layer.Wix.grad))
-        self.assertTrue(torch.equal(Wei_before, self.layer.Wei.grad))
+        # self.assertTrue(torch.equal(Wei_before, self.layer.Wei.grad))
         self.assertTrue(torch.equal(Bix_before, self.layer.Bix.grad))
-        self.assertTrue(torch.equal(Bei_before, self.layer.Bei.grad))
+        # self.assertTrue(torch.equal(Bei_before, self.layer.Bei.grad))
