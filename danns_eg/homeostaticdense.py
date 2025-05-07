@@ -112,6 +112,8 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.loss_fn = self.LocalLossMean()
         self.loss_var_fn = self.LocalLossVar()
         self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
+        self.gradient_alignment_val = 0
+        self.relu = nn.ReLU()
         
 
         if isinstance(ni, float): self.ni = int(ne*ni)
@@ -173,6 +175,20 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             return lambda_var * ln_ground_truth_loss, (ln_ground_truth_loss).item()
             # return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
             # return lambda_var * var_term.mean(), (ln_ground_truth_loss).item()
+
+    def gradient_alignment(self, z):
+
+        loss_ln_sum = self.relu(self.ln_norm(z)).sum()
+        loss_homeo_sum = self.relu(self.apply_ln_grad(z)).sum()
+
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                if 'Wex' in name:
+                    grad_true = torch.autograd.grad(loss_ln_sum, param, retain_graph=True)[0]
+                    grad_homeo = torch.autograd.grad(loss_homeo_sum, param, retain_graph=True)[0]
+                    cos_sim = F.cosine_similarity(grad_true.view(-1).unsqueeze(0), grad_homeo.view(-1).unsqueeze(0))
+
+        return cos_sim
 
     @property
     def W(self):
@@ -254,14 +270,6 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         
         # Compute inhibitory output
         self.inhibitory_output = torch.matmul(self.hi, self.Wei.T)
-
-        # Compute local homeostatic loss between excitatory and inhibitory signals
-        # hex is detached to prevent gradients from affecting Wex
-        # if torch.is_grad_enabled():
-        #     local_loss, _  = self.loss_fn((self.hex.detach() + self.b.T.detach())-self.inhibitory_output, (self.hex.detach() + self.b.T.detach()), self.lambda_homeo)
-            
-        #     # Scale and backpropagate the local loss, updating only the inhibitory weights
-        #     self.scaler.scale(local_loss).backward()
         
         # Set excitation output as hex (raw excitatory response)
         self.excitation_output = self.hex
@@ -287,6 +295,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             self.scaler.scale(local_loss_var).backward()
 
         self.z = self.z/self.z_d.detach()
+
+        # TODO: Apply gradient alignment here on some arbitrary loss.
+        if torch.is_grad_enabled():
+            self.gradient_alignment_val = self.gradient_alignment(self.z).item()
         
         # Apply layer normalization (or a similar transformation) to self.z
         self.z = self.apply_ln_grad(self.z) 
