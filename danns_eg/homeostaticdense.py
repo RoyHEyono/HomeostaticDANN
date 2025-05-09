@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from danns_eg.normalization import LayerNormalizeCustom
+from danns_eg.normalization import LayerNormalizeCustom, LayerNormalizeCustomFA
         
 class BaseModule(nn.Module):
     """
@@ -120,7 +120,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         elif isinstance(ni, int): self.ni = ni
         
         self.scaler = scaler
-        self.apply_ln_grad = LayerNormalizeCustom(no_forward=True, no_backward=(not gradient_norm))
+        # self.apply_ln_grad = LayerNormalizeCustom(no_forward=True, no_backward=(not gradient_norm))
+        self.weights = torch.rand(self.ne)
+        self.weights = self.weights / self.weights.sum()
+        self.apply_ln_grad = LayerNormalizeCustomFA(self.weights, no_backward=(not gradient_norm))
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
@@ -176,10 +179,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             # return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
             # return lambda_var * var_term.mean(), (ln_ground_truth_loss).item()
 
-    def gradient_alignment(self, z):
+    def gradient_alignment(self, z, z_d):
 
         loss_ln_sum = self.relu(self.ln_norm(z)).sum()
-        loss_homeo_sum = self.relu(self.apply_ln_grad(z)).sum()
+        loss_homeo_sum = self.relu(self.apply_ln_grad(z, z_d)).sum()
 
         for name, param in self.named_parameters():
             if param.requires_grad:
@@ -298,10 +301,10 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
         # TODO: Apply gradient alignment here on some arbitrary loss.
         if torch.is_grad_enabled():
-            self.gradient_alignment_val = self.gradient_alignment(self.z).item()
+            self.gradient_alignment_val = self.gradient_alignment(self.z, self.z_d.detach()).item()
         
         # Apply layer normalization (or a similar transformation) to self.z
-        self.z = self.apply_ln_grad(self.z) 
+        self.z = self.apply_ln_grad(self.z, self.z_d.detach()) 
 
         # Apply a non-linearity if defined, otherwise, use the linear response
         if self.nonlinearity is not None:

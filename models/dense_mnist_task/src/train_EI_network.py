@@ -76,7 +76,7 @@ Section('data', 'dataset related parameters').params(
 
 Section('model', 'Model Parameters').params(
     name=Param(str, 'model to train', default='resnet50'),
-    normtype=Param(int,'train model with MEAN NORM', default=1),
+    normtype=Param(int,'train model with MEAN NORM', default=0),
     divisive_norm=Param(int,'train model with divisive LayerNorm', default=0),
     layer_norm=Param(int,'train model with normal LayerNorm', default=0),
     normtype_detach=Param(int,'train model with detached layernorm', default=0),

@@ -231,3 +231,39 @@ class LayerNormalizeCustom(nn.Module):
 
     def forward(self, x):
         return LayerNormalizeFunction.apply(x, self.no_backward, self.no_forward)
+
+class LayerNormalizeFunctionFA(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, var, weights, no_backward):
+        
+        epsilon = 1e-5
+        ctx.no_backward = no_backward
+        ctx.save_for_backward(x, var, weights.to(x.device))
+        ctx.actual_var = x.var(dim=-1, keepdim=True, unbiased=False)
+        ctx.actual_var = torch.sqrt(ctx.actual_var + epsilon) 
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if ctx.no_backward:
+            return grad_output, None, None, None, None
+
+        x, var, weights = ctx.saved_tensors
+        D = x.shape[-1]
+
+        grad_mean = (weights * grad_output).sum(dim=-1, keepdim=True)
+        dot = (grad_output * x).sum(dim=-1, keepdim=True)
+
+        grad_input = (grad_output - grad_mean- x * dot / D) / ctx.actual_var
+        return grad_input, None, None, None, None
+
+class LayerNormalizeCustomFA(nn.Module):
+    def __init__(self, weights, no_backward=False):
+        super().__init__()
+        self.no_backward = no_backward
+        self.weights = weights
+
+    def forward(self, x, var):
+        return LayerNormalizeFunctionFA.apply(
+            x, var, self.weights, self.no_backward
+        )
