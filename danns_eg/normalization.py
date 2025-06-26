@@ -254,7 +254,11 @@ class LayerNormalizeFunctionFA(torch.autograd.Function):
         grad_mean = (weights * grad_output).sum(dim=-1, keepdim=True)
         dot = (grad_output * x).sum(dim=-1, keepdim=True)
 
-        grad_input = (grad_output - grad_mean- x * dot / D) / ctx.actual_var
+        # grad_input = (grad_output - grad_mean- x * dot / D) / ctx.actual_var
+        # grad_input = (grad_output - grad_mean) / ctx.actual_var
+        # grad_input = (grad_output) / ctx.actual_var
+        # grad_input = (grad_output - grad_mean)
+        grad_input = (grad_output - x * dot / D)
         return grad_input, None, None, None, None
 
 class LayerNormalizeCustomFA(nn.Module):

@@ -46,4 +46,4 @@ export SHUNTING=1
 export EXCITATORY_ONLY=$excitatory_only
 
 # Submit random jobs with the fixed set of random parameters
-sbatch --export=ALL run_eihomeostasis_configs.sh
+sbatch --export=ALL run_ei_homeostasis_network.sh

@@ -54,7 +54,7 @@ export SHUNTING=0
 export EXCITATORY_ONLY=$excitatory_only
 
 # Submit random jobs with the fixed set of random parameters
-sbatch --export=ALL run_ei_random_jobs.sh
+sbatch --export=ALL run_ei_network.sh
 
 
 
