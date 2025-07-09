@@ -75,7 +75,7 @@ Section('model', 'Model Parameters').params(
     is_dann=Param(int,'network is a dan network', default=1),  # This is a flag to indicate if the network is a dann network
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
-    feedback_alignment=Param(int,'homeostasis with feedback alignment', default=1),
+    feedback_alignment=Param(int,'homeostasis with feedback alignment', default=0),
     shunting=Param(int,'divisive inhibition', default=1),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),

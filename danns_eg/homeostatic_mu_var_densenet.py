@@ -42,7 +42,7 @@ class HomeostaticDenseDANN(nn.Module):
             if self.wandb_log: 
                 if not self.register_eval:
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_local_loss":layer.local_loss_value,
-                     f"gradient_alignment_{layername}":layer.gradient_alignment_val})
+                     f"gradient_alignment_{layername}":layer.gradient_alignment_val, f"output_alignment_{layername}":layer.output_alignment_val})
 
             if torch.is_grad_enabled():
                 self.local_loss_val = layer.local_loss_value

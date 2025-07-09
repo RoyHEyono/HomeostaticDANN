@@ -113,6 +113,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.loss_var_fn = self.LocalLossVar()
         self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
         self.gradient_alignment_val = 0
+        self.output_alignment_val = 0
         self.relu = nn.ReLU()
         
 
@@ -190,6 +191,14 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
                     grad_true = torch.autograd.grad(loss_ln_sum, param, retain_graph=True)[0]
                     grad_homeo = torch.autograd.grad(loss_homeo_sum, param, retain_graph=True)[0]
                     cos_sim = F.cosine_similarity(grad_true.view(-1).unsqueeze(0), grad_homeo.view(-1).unsqueeze(0))
+
+        return cos_sim
+
+    def output_alignment(self, z, z_d):
+
+        ln_output = self.relu(self.ln_norm(z))
+        homeo_output = self.relu(self.apply_ln_grad(z, z_d))
+        cos_sim = F.cosine_similarity(ln_output.view(-1).unsqueeze(0), homeo_output.view(-1).unsqueeze(0))
 
         return cos_sim
 
@@ -302,6 +311,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         # TODO: Apply gradient alignment here on some arbitrary loss.
         if torch.is_grad_enabled():
             self.gradient_alignment_val = self.gradient_alignment(self.z, self.z_d.detach()).item()
+            self.output_alignment_val = self.output_alignment(self.z, self.z_d.detach()).item()
         
         # Apply layer normalization (or a similar transformation) to self.z
         self.z = self.apply_ln_grad(self.z, self.z_d.detach()) 
