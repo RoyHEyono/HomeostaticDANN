@@ -142,3 +142,6 @@ models/dense_mnist_task/batch_scripts/ood_runs/sbatch_out
 models/dense_mnist_task/batch_scripts/ood_runs/sbatch_err
 models/rnn_task/batch_scripts/sbatch_err
 models/rnn_task/batch_scripts/sbatch_out
+
+.gitignore
+.vscode
