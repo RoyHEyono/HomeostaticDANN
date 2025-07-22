@@ -24,6 +24,7 @@ class EIDenseNet(nn.Module):
         self.local_loss_val = 0
         self.nonlinearity = nonlinearity
         self.wandb_log = wandb
+        self.forward_hook_step=0 
         
 
         setattr(self, 'fc0', EiDenseLayer(input_size, hidden_size, ni=ni, nonlinearity=None, use_bias=True, split_bias=False))
@@ -62,7 +63,7 @@ class EIDenseNet(nn.Module):
             # Second moment instead of variance
             var = total_out.var(dim=-1, keepdim=True, unbiased=False).mean().item()
 
-            if self.wandb_log: 
+            if self.wandb_log and self.forward_hook_step%100==0:  
                 if self.register_eval:
                     wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
                 else:
@@ -91,6 +92,7 @@ class EIDenseNet(nn.Module):
             x = self.relu(x)
 
         x = getattr(self, f'fc_output')(x)
+        self.forward_hook_step += 1 
         return x
 
 def net(p:dict):

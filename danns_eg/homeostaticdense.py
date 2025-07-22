@@ -92,7 +92,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
     Class modeling a subtractive feed-forward inhibition layer
     """
     def __init__(self, n_input, ne, ni=0.1, nonlinearity=None,use_bias=True, split_bias=False, lambda_homeo=1, lambda_homeo_var=1, scaler=None, gradient_norm=False,
-                 init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
+                 ln_feedback='full', init_weights_kwargs={"numerator":2, "ex_distribution":"lognormal", "k":1}):
         """
         ne : number of exciatatory outputs
         ni : number (argument is an int) or proportion (float (0,1)) of inhibtitory units
@@ -124,7 +124,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         # self.apply_ln_grad = LayerNormalizeCustom(no_forward=True, no_backward=(not gradient_norm))
         self.weights = torch.rand(self.ne)
         self.weights = self.weights / self.weights.sum()
-        self.apply_ln_grad = LayerNormalizeCustomFA(self.weights, no_backward=(not gradient_norm))
+        self.apply_ln_grad = LayerNormalizeCustomFA(self.weights, no_backward=(not gradient_norm), ln_feedback=ln_feedback)
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)

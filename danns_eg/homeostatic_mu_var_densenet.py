@@ -6,7 +6,7 @@ import wandb
 
 
 class HomeostaticDenseDANN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, scaler, wandb=False, num_layers=2, detachnorm=0, homeo_lambda=1, lambda_homeo_var=1):
+    def __init__(self, input_size, hidden_size, output_size, scaler, wandb=False, num_layers=2, detachnorm=0, homeo_lambda=1, lambda_homeo_var=1, ln_feedback='full'):
         super(HomeostaticDenseDANN, self).__init__()
         ni = max(1,int(hidden_size*0.1))
         self.num_layers = num_layers
@@ -17,13 +17,14 @@ class HomeostaticDenseDANN(nn.Module):
         self.wandb_log = wandb
         self.homeo_lambda = homeo_lambda
         self.homeo_lambda_var = lambda_homeo_var
+        self.forward_hook_step = 0
 
 
-        setattr(self, 'fc0', EiDenseLayerDecoupledHomeostatic(input_size, hidden_size, ni=ni, nonlinearity=None, use_bias=True, split_bias=False, lambda_homeo=self.homeo_lambda, lambda_homeo_var=self.homeo_lambda_var, scaler=self.scaler, gradient_norm=self.detachnorm))
+        setattr(self, 'fc0', EiDenseLayerDecoupledHomeostatic(input_size, hidden_size, ni=ni, nonlinearity=None, use_bias=True, split_bias=False, lambda_homeo=self.homeo_lambda, lambda_homeo_var=self.homeo_lambda_var, scaler=self.scaler, gradient_norm=self.detachnorm, ln_feedback=ln_feedback))
 
         # Hidden layers
         for i in range(0, self.num_layers):
-            setattr(self, f'fc{i+1}', EiDenseLayerDecoupledHomeostatic(hidden_size, hidden_size, ni=ni, nonlinearity=None, use_bias=True, split_bias=False, lambda_homeo=self.homeo_lambda, lambda_homeo_var=self.homeo_lambda_var, scaler=self.scaler, gradient_norm=self.detachnorm))
+            setattr(self, f'fc{i+1}', EiDenseLayerDecoupledHomeostatic(hidden_size, hidden_size, ni=ni, nonlinearity=None, use_bias=True, split_bias=False, lambda_homeo=self.homeo_lambda, lambda_homeo_var=self.homeo_lambda_var, scaler=self.scaler, gradient_norm=self.detachnorm, ln_feedback=ln_feedback))
                                     
         self.relu = nn.ReLU()
         
@@ -39,7 +40,7 @@ class HomeostaticDenseDANN(nn.Module):
             # Second moment instead of variance
             var = output.var(dim=-1, keepdim=True, unbiased=False).mean().item()
 
-            if self.wandb_log: 
+            if self.wandb_log and self.forward_hook_step%100==0: 
                 if not self.register_eval:
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_local_loss":layer.local_loss_value,
                      f"gradient_alignment_{layername}":layer.gradient_alignment_val, f"output_alignment_{layername}":layer.output_alignment_val})
@@ -66,6 +67,7 @@ class HomeostaticDenseDANN(nn.Module):
             x = self.relu(x)
 
         x = getattr(self, f'fc_output')(x)
+        self.forward_hook_step += 1
         return x
 
 def net(p:dict, scaler):
@@ -74,7 +76,7 @@ def net(p:dict, scaler):
     num_class = 10
     width=p.model.hidden_layer_width
         
-    model = HomeostaticDenseDANN(input_dim, width, num_class, wandb=p.exp.use_wandb, scaler=scaler, num_layers=1, detachnorm=p.model.normtype_detach, homeo_lambda=p.opt.lambda_homeo, lambda_homeo_var=p.opt.lambda_homeo_var)
+    model = HomeostaticDenseDANN(input_dim, width, num_class, wandb=p.exp.use_wandb, scaler=scaler, num_layers=1, detachnorm=p.model.normtype_detach, homeo_lambda=p.opt.lambda_homeo, lambda_homeo_var=p.opt.lambda_homeo_var, ln_feedback=p.model.ln_feedback)
 
 
     return model

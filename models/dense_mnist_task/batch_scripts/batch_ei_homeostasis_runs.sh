@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --array=0-7  # 8 grid configurations: 0 to 7
+#SBATCH --array=0-31%2              # 32 grid configurations: 0..31
 #SBATCH --partition=long
 #SBATCH --gres=gpu:rtx8000:1
 #SBATCH --mem=16GB
@@ -9,41 +9,77 @@
 #SBATCH --error=sbatch_err/grid_config_homeostasis_%A_%a.err
 #SBATCH --job-name=run_grid_configs_homeostasis
 
+# ----------------------------
 # Load environment
+# ----------------------------
 . ~/HomeostaticDANN/load_venv.sh
 
+# ----------------------------
 # Grid parameters
+# ----------------------------
 brightness_factors=(0 0.5 0.75 1)
-homeostasis_values=(0)  # Fixed to 0
-normtypes=(0)           # Fixed to 0
+homeostasis_values=(0)        # Fixed to 0
+normtypes=(0)                 # Fixed to 0
 normtype_detach=(0 1)
-excitatory_only=(1)     # Fixed to 1
+excitatory_only=(1)           # Fixed to 1
 
-# Calculate grid parameters based on SLURM_ARRAY_TASK_ID
+# >>> Updated list of 4 strings <<<
+string_labels=("scale" "center" "decorrelate" "full")
+
+# ----------------------------
+# Sizes
+# ----------------------------
 num_brightness_factors=${#brightness_factors[@]}
-num_normtypes=${#normtypes[@]}
 num_normtype_detach=${#normtype_detach[@]}
-num_excitatory_only=${#excitatory_only[@]}
+num_string_labels=${#string_labels[@]}
 
-grid_index=$SLURM_ARRAY_TASK_ID
+# Optional sanity check
+if (( num_brightness_factors * num_normtype_detach * num_string_labels != 32 )); then
+    echo "WARNING: Grid size != 32; update --array accordingly." >&2
+fi
 
-brightness_factor_idx=$((grid_index % num_brightness_factors))
-detach_normtype_idx=$((grid_index / num_brightness_factors % num_normtype_detach))
+# ----------------------------
+# Index decode
+# ----------------------------
+grid_index=${SLURM_ARRAY_TASK_ID}
+
+brightness_factor_idx=$(( grid_index % num_brightness_factors ))
+detach_normtype_idx=$(( (grid_index / num_brightness_factors) % num_normtype_detach ))
+string_label_idx=$(( (grid_index / (num_brightness_factors * num_normtype_detach)) % num_string_labels ))
 
 brightness_factor=${brightness_factors[$brightness_factor_idx]}
-normtype=${normtypes[0]}  # Always 0
 detach_normtype=${normtype_detach[$detach_normtype_idx]}
-excitatory_only=${excitatory_only[0]}  # Always 1
+string_label=${string_labels[$string_label_idx]}
 
-# Load the pre-generated random configurations
+# Fixed values
+normtype=${normtypes[0]}
+excitatory_only=${excitatory_only[0]}
+HOMEOSTASIS=1
+LAMBDA_HOMEOS=0.01
+SHUNTING=1
+
+# ----------------------------
+# Debug print
+# ----------------------------
+echo "GRID_INDEX:         $grid_index"
+echo "brightness_factor:  $brightness_factor (idx $brightness_factor_idx)"
+echo "detach_normtype:    $detach_normtype (idx $detach_normtype_idx)"
+echo "string_label:       $string_label (idx $string_label_idx)"
+
+# ----------------------------
+# Export env vars for downstream script
+# ----------------------------
 export GRID_INDEX=$grid_index
 export BRIGHTNESS_FACTOR=$brightness_factor
 export NORMTYPE=$normtype
-export HOMEOSTASIS=1
-export LAMBDA_HOMEOS=0.01
+export HOMEOSTASIS=$HOMEOSTASIS
+export LAMBDA_HOMEOS=$LAMBDA_HOMEOS
 export NORMTYPE_DETACH=$detach_normtype
-export SHUNTING=1
+export SHUNTING=$SHUNTING
 export EXCITATORY_ONLY=$excitatory_only
+export LN_FEEDBACK="$string_label"
 
-# Submit random jobs with the fixed set of random parameters
+# ----------------------------
+# Launch job
+# ----------------------------
 sbatch --export=ALL run_ei_homeostasis_network.sh

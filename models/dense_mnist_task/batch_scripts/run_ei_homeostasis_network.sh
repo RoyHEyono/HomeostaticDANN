@@ -21,6 +21,7 @@ normtype=$NORMTYPE
 normtype_detach=$NORMTYPE_DETACH
 shunting=$SHUNTING
 excitatory_only=$EXCITATORY_ONLY
+ln_feedback=$LN_FEEDBACK
 
 # Load random parameters from file
 random_configs_file='random_configs.json'
@@ -53,6 +54,7 @@ python /home/mila/r/roy.eyono/HomeostaticDANN/models/dense_mnist_task/src/train_
   --model.excitation_training=$excitatory_only \
   --model.hidden_layer_width=$hidden_layer_width \
   --model.homeo_opt_exc=0 \
+  --model.ln_feedback=$ln_feedback \
   --opt.use_sep_bias_gain_lrs=1 \
   --exp.wandb_project=Luminosity_LNHomeostasis \
   --exp.wandb_entity=project_danns \

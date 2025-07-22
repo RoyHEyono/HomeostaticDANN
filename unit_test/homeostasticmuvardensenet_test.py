@@ -69,7 +69,8 @@ class Test_HomeostasticDenseNet(unittest.TestCase):
             'model': {
                 'hidden_layer_width': 20,
                 'normtype': 1,  # Assume 1 means ReLU, or any other norm type
-                'normtype_detach': 1
+                'normtype_detach': 1,
+                'ln_feedback': 'full'
             },
             'exp': {
                 'use_wandb': False

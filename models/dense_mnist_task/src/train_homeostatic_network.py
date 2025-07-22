@@ -76,6 +76,7 @@ Section('model', 'Model Parameters').params(
     n_outputs=Param(int,'e.g number of target classes', default=10),
     homeostasis=Param(int,'homeostasis', default=1),
     feedback_alignment=Param(int,'homeostasis with feedback alignment', default=0),
+    ln_feedback=Param(str, 'feedback for ln gradient', default='full'),
     shunting=Param(int,'divisive inhibition', default=1),
     excitation_training=Param(int,'training excitatory layers', default=1),
     implicit_homeostatic_loss=Param(int,'homeostasic loss', default=0),
