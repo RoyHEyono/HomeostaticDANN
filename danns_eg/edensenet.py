@@ -65,9 +65,9 @@ class EDenseNet(nn.Module):
 
             if self.wandb_log and self.forward_hook_step%100==0: 
                 if self.register_eval:
-                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var})
+                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var}, commit=False)
                 else:
-                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var})
+                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var}, commit=False)
         
         return forward_hook
 

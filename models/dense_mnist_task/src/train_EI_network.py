@@ -169,8 +169,8 @@ def train_epoch(model, loaders, loss_fn, opt, p, scaler, epoch):
         if p.exp.use_wandb: 
             wandb.log({"update_acc":batch_acc,
                        "update_loss":loss.cpu().item(),
-                       "lr":opt.param_groups[0]['lr']})
-            wandb.log(grad_norms)
+                       "lr":opt.param_groups[0]['lr']}, commit=False)
+            wandb.log(grad_norms, commit=False)
         scaler.step(opt)
         scaler.update()
         idx_batch_count = idx_batch_count + 1

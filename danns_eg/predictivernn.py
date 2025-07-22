@@ -94,10 +94,10 @@ class prnn(nn.Module):
             if self.configs.exp.use_wandb and layer_data['hook_count'] % log_frequency == 0:
                 if self.register_eval:
                     wandb.log({f"eval_{layername}_mu": stats_tracker['mu'], 
-                            f"eval_{layername}_var": stats_tracker['var']})
+                            f"eval_{layername}_var": stats_tracker['var']}, commit=False)
                 else:
                     wandb.log({f"train_{layername}_mu": stats_tracker['mu'], 
-                            f"train_{layername}_var": stats_tracker['var']})
+                            f"train_{layername}_var": stats_tracker['var']}, commit=False)
 
             # Compute gradients periodically (e.g., every 100 calls)
             update_frequency = 28 # This is based on sequentialMNIST
