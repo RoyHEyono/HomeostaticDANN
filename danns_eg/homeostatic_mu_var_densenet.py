@@ -40,7 +40,7 @@ class HomeostaticDenseDANN(nn.Module):
             # Second moment instead of variance
             var = output.var(dim=-1, keepdim=True, unbiased=False).mean().item()
 
-            if self.wandb_log and self.forward_hook_step%100==0: 
+            if self.wandb_log and self.forward_hook_step%1==0: 
                 if not self.register_eval:
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_local_loss":layer.local_loss_value,
                      f"gradient_alignment_{layername}":layer.gradient_alignment_val, f"output_alignment_{layername}":layer.output_alignment_val}, commit=False)
