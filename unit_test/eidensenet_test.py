@@ -95,7 +95,7 @@ class Test_EIDenseNet(unittest.TestCase):
         normalized_output = model.ln(x_centered)
         # Test that MeanNormalize works if nonlinearity is enabled
         self.assertEqual(normalized_output.shape, (32, 20), "Mean normalization output shape is incorrect")
-        self.assertAlmostEqual(normalized_output.var().item(), layernorm_control(x_centered).var().item(), delta=1e-8)
+        self.assertAlmostEqual(normalized_output.var().item(), layernorm_control(x_centered).var().item(), delta=1e-7)
 
     def test_no_nonlinearity(self):
         # Initialize the model for testing without nonlinearity

@@ -64,10 +64,9 @@ class EDenseNet(nn.Module):
             var = total_out.var(dim=-1, keepdim=True, unbiased=False).mean().item()
 
             if self.wandb_log and self.forward_hook_step%1==0: 
-                if self.register_eval:
-                    wandb.log({f"eval_{layername}_mu":mu, f"eval_{layername}_var":var}, commit=False)
-                else:
-                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var}, commit=False)
+                if not self.register_eval:
+                    wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var,
+                     f"gradient_alignment_{layername}":layer.gradient_alignment_val, f"output_alignment_{layername}":layer.output_alignment_val}, commit=False)
         
         return forward_hook
 

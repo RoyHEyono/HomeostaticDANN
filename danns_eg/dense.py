@@ -171,6 +171,10 @@ class EiDenseLayer(BaseModule):
         self.ne = ne
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
+        self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
+        self.gradient_alignment_val = 0
+        self.output_alignment_val = 0
+        self.relu = nn.ReLU()
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input))
@@ -244,6 +248,28 @@ class EiDenseLayer(BaseModule):
         self.Wix.data = torch.from_numpy(Wix_np).float()
         self.Wei.data = torch.from_numpy(Wei_np).float()
 
+    def gradient_alignment(self, z):
+
+        loss_ln_sum = self.relu(self.ln_norm(z)).sum()
+        loss_z_sum = self.relu(z).sum()
+
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                if 'Wex' in name:
+                    grad_true = torch.autograd.grad(loss_ln_sum, param, retain_graph=True)[0]
+                    grad_homeo = torch.autograd.grad(loss_z_sum, param, retain_graph=True)[0]
+                    cos_sim = F.cosine_similarity(grad_true.view(-1).unsqueeze(0), grad_homeo.view(-1).unsqueeze(0))
+
+        return cos_sim
+
+    def output_alignment(self, z):
+
+        ln_output = self.relu(self.ln_norm(z))
+        z_output = self.relu(z)
+        cos_sim = F.cosine_similarity(ln_output.view(-1).unsqueeze(0), z_output.view(-1).unsqueeze(0))
+
+        return cos_sim
+
     def forward(self, x):
         """
         x is batch_dim x input_dim, 
@@ -256,6 +282,11 @@ class EiDenseLayer(BaseModule):
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
+
+        if torch.is_grad_enabled():
+            self.gradient_alignment_val = self.gradient_alignment(self.h).item()
+            self.output_alignment_val = self.output_alignment(self.h).item()
+        
         return self.h
 
 class EDenseLayer(BaseModule):
@@ -277,6 +308,10 @@ class EDenseLayer(BaseModule):
         self.ne = ne
         if isinstance(ni, float): self.ni = int(ne*ni)
         elif isinstance(ni, int): self.ni = ni
+        self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
+        self.gradient_alignment_val = 0
+        self.output_alignment_val = 0
+        self.relu = nn.ReLU()
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input))
@@ -342,6 +377,28 @@ class EDenseLayer(BaseModule):
         
         self.Wex.data = torch.from_numpy(Wex_np).float()
 
+    def gradient_alignment(self, z):
+
+        loss_ln_sum = self.relu(self.ln_norm(z)).sum()
+        loss_z_sum = self.relu(z).sum()
+
+        for name, param in self.named_parameters():
+            if param.requires_grad:
+                if 'Wex' in name:
+                    grad_true = torch.autograd.grad(loss_ln_sum, param, retain_graph=True)[0]
+                    grad_homeo = torch.autograd.grad(loss_z_sum, param, retain_graph=True)[0]
+                    cos_sim = F.cosine_similarity(grad_true.view(-1).unsqueeze(0), grad_homeo.view(-1).unsqueeze(0))
+
+        return cos_sim
+
+    def output_alignment(self, z):
+
+        ln_output = self.relu(self.ln_norm(z))
+        z_output = self.relu(z)
+        cos_sim = F.cosine_similarity(ln_output.view(-1).unsqueeze(0), z_output.view(-1).unsqueeze(0))
+
+        return cos_sim
+
     def forward(self, x):
         """
         x is batch_dim x input_dim, 
@@ -354,6 +411,11 @@ class EDenseLayer(BaseModule):
             self.h = self.nonlinearity(self.z)
         else:
             self.h = self.z
+
+        if torch.is_grad_enabled():
+            self.gradient_alignment_val = self.gradient_alignment(self.h).item()
+            self.output_alignment_val = self.output_alignment(self.h).item()
+        
         return self.h
 
 
