@@ -4,8 +4,8 @@ module load python/3.9
 
 module list
 
-VENV_NAME='homeostatic_dann_2025'
-VENV_DIR=$HOME'/venvs/'$VENV_NAME
+VENV_NAME='.venv'
+VENV_DIR=$HOME'/HomeostaticDANN/'$VENV_NAME
 
 echo 'Loading virtual env: '$VENV_NAME' in '$VENV_DIR
 
