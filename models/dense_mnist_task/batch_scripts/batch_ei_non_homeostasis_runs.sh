@@ -13,7 +13,7 @@
 . ~/HomeostaticDANN/load_venv.sh
 
 # Grid parameters
-brightness_factors=(0 0.5 0.75 1)
+brightness_factors=(0 0.25 0.5 0.75)
 homeostasis_values=(0)  # Fixed to 0, you may want to keep this for potential future flexibility
 normtypes=(0 1)
 normtype_detach=(0 1)

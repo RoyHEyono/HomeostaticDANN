@@ -176,8 +176,8 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
             
             var_term = (var-1) ** 2
             mean_term = mean ** 2
-            return lambda_var * ln_ground_truth_loss, (ln_ground_truth_loss).item()
-            # return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
+            # return lambda_var * ln_ground_truth_loss, (ln_ground_truth_loss).item()
+            return lambda_var * ((mean_term + var_term).mean()), (ln_ground_truth_loss).item()
             # return lambda_var * var_term.mean(), (ln_ground_truth_loss).item()
 
     def gradient_alignment(self, z, z_d):
