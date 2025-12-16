@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from danns_eg.normalization import LayerNormalizeCustom, LayerNormalizeCustomFA
+from danns_eg.normalization import LayerNormalizeCustom, LayerNormalizeCustomFA, MeanNormalize
         
 class BaseModule(nn.Module):
     """
@@ -112,6 +112,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.loss_fn = self.LocalLossMean()
         self.loss_var_fn = self.LocalLossVar()
         self.ln_norm = torch.nn.LayerNorm(ne, elementwise_affine=False)
+        self.mean_norm = MeanNormalize()
         self.gradient_alignment_val = 0
         self.output_alignment_val = 0
         self.relu = nn.ReLU()
@@ -125,6 +126,7 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
         self.weights = torch.rand(self.ne)
         self.weights = self.weights / self.weights.sum()
         self.apply_ln_grad = LayerNormalizeCustomFA(self.weights, no_backward=(not gradient_norm), ln_feedback=ln_feedback)
+        self.ln_feedback = ln_feedback
 
         # to-from notation - W_post_pre and the shape is n_output x n_input
         self.Wex = nn.Parameter(torch.empty(self.ne,self.n_input), requires_grad=True)
@@ -182,7 +184,11 @@ class EiDenseLayerDecoupledHomeostatic(BaseModule):
 
     def gradient_alignment(self, z, z_d):
 
-        loss_ln_sum = self.relu(self.ln_norm(z)).sum()
+        if self.ln_feedback == 'fa_center':
+            loss_ln_sum = self.relu(self.mean_norm(z)).sum()
+        else:
+            loss_ln_sum = self.relu(self.ln_norm(z)).sum()
+        
         loss_homeo_sum = self.relu(self.apply_ln_grad(z, z_d)).sum()
 
         for name, param in self.named_parameters():
