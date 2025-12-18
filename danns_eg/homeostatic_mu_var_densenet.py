@@ -45,6 +45,18 @@ class HomeostaticDenseDANN(nn.Module):
                     wandb.log({f"train_{layername}_mu":mu, f"train_{layername}_var":var, f"train_{layername}_local_loss":layer.local_loss_value,
                      f"gradient_alignment_{layername}":layer.gradient_alignment_val, f"output_alignment_{layername}":layer.output_alignment_val}, commit=False)
 
+            # Compute and log gradient eigenvalue max only during eval and only once per layer
+            if (self.register_eval and 
+                hasattr(layer, 'apply_ln_grad') and
+                layer.ln_feedback == 'fa_center'):
+                grad_output = layer.apply_ln_grad.grad_norm_delta
+                D_centered = grad_output - grad_output.mean(dim=0, keepdim=True)
+                Sigma = D_centered.T @ D_centered / (D_centered.shape[0]-1)
+                # Largest eigenvalue - convert to float32 for eigvalsh (doesn't support float16)
+                lambda_max = torch.linalg.eigvalsh(Sigma.float()).max().item()
+                if self.wandb_log:
+                    wandb.log({f"eval_{layername}_gradient_eigenvalue_max": lambda_max}, commit=False)
+
             if torch.is_grad_enabled():
                 self.local_loss_val = layer.local_loss_value
         

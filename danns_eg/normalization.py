@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import wandb
 
 class CustomGroupNorm(nn.Module):
     def __init__(self, num_groups, num_channels, affine=True, eps=1e-5, momentum=1e-4, subtractive=False, divisive=False):
@@ -234,11 +235,12 @@ class LayerNormalizeCustom(nn.Module):
 
 class LayerNormalizeFunctionFA(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, var, weights, no_backward, ln_feedback):
+    def forward(ctx, x, var, weights, no_backward, ln_feedback, module):
         
         epsilon = 1e-5
         ctx.no_backward = no_backward
         ctx.ln_feedback = ln_feedback
+        ctx.module = module
         ctx.save_for_backward(x, var, weights.to(x.device))
         ctx.actual_var = x.var(dim=-1, keepdim=True, unbiased=False)
         ctx.actual_var = torch.sqrt(ctx.actual_var + epsilon) 
@@ -247,7 +249,7 @@ class LayerNormalizeFunctionFA(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.no_backward:
-            return grad_output, None, None, None, None, None
+            return grad_output, None, None, None, None, None, None
 
         #TODO: Need to add some flags to better manage runs and configs
         x, var, weights = ctx.saved_tensors
@@ -265,7 +267,11 @@ class LayerNormalizeFunctionFA(torch.autograd.Function):
             grad_mean = grad_output.mean(dim=-1, keepdim=True)
             grad_input = (grad_output - grad_mean)
 
-        elif ctx.ln_feedback == 'fa_center':
+        elif ctx.ln_feedback == 'fa_center':          
+            # Store grad_output for later eigenvalue computation (when logging)
+            if ctx.module is not None:
+                ctx.module.grad_norm_delta = grad_output.detach().clone()
+
             grad_mean = (weights * grad_output).sum(dim=-1, keepdim=True)
             grad_input = (grad_output - grad_mean)
 
@@ -278,7 +284,7 @@ class LayerNormalizeFunctionFA(torch.autograd.Function):
             grad_input = (grad_output - x * dot / D)
         
         
-        return grad_input, None, None, None, None, None
+        return grad_input, None, None, None, None, None, None
 
 class LayerNormalizeCustomFA(nn.Module):
     def __init__(self, weights, no_backward=False, ln_feedback='full'):
@@ -286,9 +292,10 @@ class LayerNormalizeCustomFA(nn.Module):
         self.no_backward = no_backward
         self.weights = weights
         self.ln_feedback=ln_feedback
+        self.grad_norm_delta = None
 
 
     def forward(self, x, var):
         return LayerNormalizeFunctionFA.apply(
-            x, var, self.weights, self.no_backward, self.ln_feedback
+            x, var, self.weights, self.no_backward, self.ln_feedback, self
         )
